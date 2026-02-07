@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { usePortal } from "../../layout";
+import { usePortal } from "@/lib/portal-context";
 
 interface TicketResult {
   number: number;

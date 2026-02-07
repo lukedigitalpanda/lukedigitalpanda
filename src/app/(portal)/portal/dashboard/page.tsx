@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, getStatusColor, getPriorityColor, formatDate } from "@/lib/utils";
-import { usePortal } from "../../layout";
+import { usePortal } from "@/lib/portal-context";
 
 // ──────────────────────────────────────────────
 // Types

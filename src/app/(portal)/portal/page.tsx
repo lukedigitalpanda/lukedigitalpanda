@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Plus, Search, Ticket } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { usePortal } from "../layout";
+import { usePortal } from "@/lib/portal-context";
 
 export default function PortalHomePage() {
   const { isLoggedIn } = usePortal();

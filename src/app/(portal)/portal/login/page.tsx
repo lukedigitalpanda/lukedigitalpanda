@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { usePortal } from "../../layout";
+import { usePortal } from "@/lib/portal-context";
 
 export default function PortalLoginPage() {
   const router = useRouter();

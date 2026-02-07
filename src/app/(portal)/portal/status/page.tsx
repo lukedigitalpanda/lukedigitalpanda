@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn, getStatusColor, getPriorityColor, formatDate, formatRelativeTime } from "@/lib/utils";
-import { usePortal } from "../../layout";
+import { usePortal } from "@/lib/portal-context";
 
 interface TicketComment {
   id: string;
