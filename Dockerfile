@@ -1,12 +1,12 @@
-FROM node:18-alpine AS base
+FROM node:18-slim AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
+RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN npm install --legacy-peer-deps
 
 # Generate Prisma client
 COPY prisma ./prisma
@@ -24,7 +24,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # Production image
-FROM base AS runner
+FROM node:18-slim AS runner
+RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 ENV NODE_ENV=production
