@@ -1,0 +1,451 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Plus, Search, BookOpen } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { formatRelativeTime, truncate } from "@/lib/utils";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface KnowledgeArticle {
+  id: string;
+  title: string;
+  content: string;
+  category: string | null;
+  tags: string[];
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+  author: { id: string; name: string };
+}
+
+interface NewArticleForm {
+  title: string;
+  category: string;
+  content: string;
+  tags: string;
+  isPublic: boolean;
+}
+
+const emptyForm: NewArticleForm = {
+  title: "",
+  category: "General",
+  content: "",
+  tags: "",
+  isPublic: false,
+};
+
+const CATEGORIES = [
+  "Network",
+  "Hardware",
+  "Software",
+  "Security",
+  "General",
+  "How-To",
+];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getCategoryColor(category: string | null): string {
+  const colors: Record<string, string> = {
+    Network: "bg-blue-100 text-blue-800",
+    Hardware: "bg-purple-100 text-purple-800",
+    Software: "bg-green-100 text-green-800",
+    Security: "bg-red-100 text-red-800",
+    General: "bg-gray-100 text-gray-800",
+    "How-To": "bg-yellow-100 text-yellow-800",
+  };
+  return colors[category || ""] || "bg-gray-100 text-gray-800";
+}
+
+// ---------------------------------------------------------------------------
+// Loading skeleton
+// ---------------------------------------------------------------------------
+
+function GridSkeleton() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Card key={i}>
+          <CardHeader>
+            <div className="h-5 w-3/4 animate-pulse rounded bg-muted" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="h-4 w-20 animate-pulse rounded-full bg-muted" />
+              <div className="h-16 w-full animate-pulse rounded bg-muted" />
+              <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+export default function KnowledgeBasePage() {
+  const [articles, setArticles] = useState<KnowledgeArticle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Search
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // View dialog
+  const [selectedArticle, setSelectedArticle] =
+    useState<KnowledgeArticle | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
+
+  // New article dialog
+  const [newOpen, setNewOpen] = useState(false);
+  const [form, setForm] = useState<NewArticleForm>(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function fetchArticles() {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch("/api/knowledge");
+      if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+      const json = await res.json();
+      const list = Array.isArray(json) ? json : json.data ?? [];
+      setArticles(list);
+    } catch (err) {
+      console.error("Knowledge base fetch error:", err);
+      setError(
+        err instanceof Error ? err.message : "An unexpected error occurred"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchArticles();
+  }, []);
+
+  function updateField<K extends keyof NewArticleForm>(
+    key: K,
+    value: NewArticleForm[K]
+  ) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const body = {
+        title: form.title,
+        category: form.category,
+        content: form.content,
+        tags: form.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+        isPublic: form.isPublic,
+      };
+
+      const res = await fetch("/api/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) throw new Error(`Failed to create (${res.status})`);
+
+      setNewOpen(false);
+      setForm(emptyForm);
+      await fetchArticles();
+    } catch (err) {
+      console.error("Create article error:", err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Filter articles by search
+  const filtered = articles.filter((a) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      a.title.toLowerCase().includes(q) ||
+      a.content.toLowerCase().includes(q) ||
+      (a.category && a.category.toLowerCase().includes(q)) ||
+      a.tags.some((t) => t.toLowerCase().includes(q))
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Knowledge Base</h1>
+          <p className="text-muted-foreground">
+            Articles, guides, and documentation
+          </p>
+        </div>
+
+        {/* New Article Dialog Trigger */}
+        <Dialog open={newOpen} onOpenChange={setNewOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New Article
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>New Knowledge Article</DialogTitle>
+              <DialogDescription>
+                Create a new article for the knowledge base.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-title">Title *</Label>
+                <Input
+                  id="new-title"
+                  placeholder="Article title"
+                  value={form.title}
+                  onChange={(e) => updateField("title", e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Category *</Label>
+                <Select
+                  value={form.category}
+                  onValueChange={(v) => updateField("category", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-content">Content *</Label>
+                <Textarea
+                  id="new-content"
+                  placeholder="Article content..."
+                  rows={10}
+                  value={form.content}
+                  onChange={(e) => updateField("content", e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-tags">Tags (comma separated)</Label>
+                <Input
+                  id="new-tags"
+                  placeholder="e.g. vpn, networking, firewall"
+                  value={form.tags}
+                  onChange={(e) => updateField("tags", e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  id="new-public"
+                  type="checkbox"
+                  checked={form.isPublic}
+                  onChange={(e) => updateField("isPublic", e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="new-public" className="cursor-pointer">
+                  Make publicly visible
+                </Label>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setNewOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? "Creating..." : "Create Article"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search articles..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      {/* Error state */}
+      {error && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <BookOpen className="mb-4 h-10 w-10 text-destructive" />
+            <p className="text-lg font-medium text-destructive">{error}</p>
+            <Button
+              variant="outline"
+              className="mt-4"
+              onClick={() => fetchArticles()}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Loading state */}
+      {loading && <GridSkeleton />}
+
+      {/* Empty state */}
+      {!loading && !error && filtered.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <BookOpen className="mb-4 h-12 w-12 text-muted-foreground" />
+            <p className="text-lg font-medium text-muted-foreground">
+              {searchQuery
+                ? "No articles match your search"
+                : "No articles yet"}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {searchQuery
+                ? "Try a different search term."
+                : "Create your first knowledge base article to get started."}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Articles grid */}
+      {!loading && !error && filtered.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((article) => (
+            <Card
+              key={article.id}
+              className="cursor-pointer transition-shadow hover:shadow-md"
+              onClick={() => {
+                setSelectedArticle(article);
+                setViewOpen(true);
+              }}
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="line-clamp-2 text-base">
+                  {article.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Badge
+                    className={getCategoryColor(article.category)}
+                    variant="secondary"
+                  >
+                    {article.category || "Uncategorized"}
+                  </Badge>
+                  {article.isPublic && (
+                    <Badge variant="outline" className="text-xs">
+                      Public
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {truncate(article.content, 150)}
+                </p>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{article.author.name}</span>
+                  <span>{formatRelativeTime(article.updatedAt)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* View Article Dialog */}
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
+          {selectedArticle && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedArticle.title}</DialogTitle>
+                <DialogDescription>
+                  <span className="flex items-center gap-2">
+                    <Badge
+                      className={getCategoryColor(selectedArticle.category)}
+                      variant="secondary"
+                    >
+                      {selectedArticle.category || "Uncategorized"}
+                    </Badge>
+                    <span>by {selectedArticle.author.name}</span>
+                    <span className="text-muted-foreground">
+                      {formatRelativeTime(selectedArticle.updatedAt)}
+                    </span>
+                  </span>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                {selectedArticle.content}
+              </div>
+              {selectedArticle.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 border-t pt-4">
+                  {selectedArticle.tags.map((tag) => (
+                    <Badge key={tag} variant="outline" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

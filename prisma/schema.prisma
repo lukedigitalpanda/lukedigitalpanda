@@ -1,0 +1,483 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// AUTH & USERS
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  image         String?
+  role          UserRole  @default(TECHNICIAN)
+  isActive      Boolean   @default(true)
+  phone         String?
+  jobTitle      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  // Tickets
+  assignedTickets  Ticket[]       @relation("AssignedTechnician")
+  createdTickets   Ticket[]       @relation("TicketCreator")
+  ticketComments   TicketComment[]
+  ticketActivities TicketActivity[]
+
+  // Change Requests
+  createdChangeRequests  ChangeRequest[] @relation("ChangeCreator")
+  approvedChangeRequests ChangeRequest[] @relation("ChangeApprover")
+  changeComments         ChangeRequestComment[]
+
+  // Time entries
+  timeEntries TimeEntry[]
+
+  // Knowledge base
+  knowledgeArticles KnowledgeArticle[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  TECHNICIAN
+  CLIENT_USER
+}
+
+// ============================================================================
+// CLIENTS (MSP Customers)
+// ============================================================================
+
+model Client {
+  id           String  @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  website      String?
+  address      String?
+  notes        String? @db.Text
+  isActive     Boolean @default(true)
+  contractType String? // e.g., "Managed", "Break-Fix", "Project"
+  slaLevel     String? // e.g., "Gold", "Silver", "Bronze"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts       ClientContact[]
+  tickets        Ticket[]
+  assets         Asset[]
+  changeRequests ChangeRequest[]
+
+  @@map("clients")
+}
+
+model ClientContact {
+  id        String  @id @default(cuid())
+  clientId  String
+  name      String
+  email     String
+  phone     String?
+  jobTitle  String?
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client  Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  @@map("client_contacts")
+}
+
+// ============================================================================
+// TICKETS
+// ============================================================================
+
+model Ticket {
+  id          String         @id @default(cuid())
+  number      Int            @unique @default(autoincrement())
+  subject     String
+  description String         @db.Text
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  category    String?
+  subcategory String?
+  source      TicketSource   @default(MANUAL)
+
+  // SLA
+  slaDeadline   DateTime?
+  slaBreached   Boolean   @default(false)
+  firstResponse DateTime?
+
+  // Email tracking
+  emailMessageId String?
+  emailThreadId  String?
+
+  // AI-generated fields
+  aiCategory    String?
+  aiSummary     String?  @db.Text
+  aiSuggestion  String?  @db.Text
+  aiConfidence  Float?
+
+  // Relations
+  clientId    String
+  contactId   String?
+  assigneeId  String?
+  createdById String
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  closedAt   DateTime?
+  resolvedAt DateTime?
+
+  client    Client         @relation(fields: [clientId], references: [id])
+  contact   ClientContact? @relation(fields: [contactId], references: [id])
+  assignee  User?          @relation("AssignedTechnician", fields: [assigneeId], references: [id])
+  createdBy User           @relation("TicketCreator", fields: [createdById], references: [id])
+
+  comments   TicketComment[]
+  activities TicketActivity[]
+  timeEntries TimeEntry[]
+  attachments TicketAttachment[]
+  relatedAssets Asset[] @relation("TicketAssets")
+
+  @@index([status])
+  @@index([priority])
+  @@index([clientId])
+  @@index([assigneeId])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+model TicketComment {
+  id         String  @id @default(cuid())
+  ticketId   String
+  authorId   String
+  content    String  @db.Text
+  isInternal Boolean @default(false) // Internal note vs client-visible
+  isEmail    Boolean @default(false) // Sent/received via email
+  emailMessageId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_comments")
+}
+
+model TicketActivity {
+  id       String @id @default(cuid())
+  ticketId String
+  userId   String
+  action   String // e.g., "status_changed", "assigned", "priority_changed"
+  oldValue String?
+  newValue String?
+  details  String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_activities")
+}
+
+model TicketAttachment {
+  id       String @id @default(cuid())
+  ticketId String
+  fileName String
+  fileUrl  String
+  fileSize Int
+  mimeType String
+
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_attachments")
+}
+
+model TimeEntry {
+  id          String   @id @default(cuid())
+  ticketId    String
+  userId      String
+  description String?
+  minutes     Int
+  billable    Boolean  @default(true)
+  date        DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@index([userId])
+  @@map("time_entries")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CLIENT
+  WAITING_ON_VENDOR
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketSource {
+  MANUAL
+  EMAIL
+  PORTAL
+  PHONE
+  API
+}
+
+// ============================================================================
+// ASSET MANAGEMENT
+// ============================================================================
+
+model Asset {
+  id           String      @id @default(cuid())
+  name         String
+  assetTag     String?     @unique
+  type         AssetType
+  status       AssetStatus @default(ACTIVE)
+  manufacturer String?
+  model        String?
+  serialNumber String?
+  purchaseDate DateTime?
+  warrantyEnd  DateTime?
+  notes        String?     @db.Text
+
+  // Network info
+  ipAddress  String?
+  macAddress String?
+  hostname   String?
+
+  // Software-specific
+  licenseKey     String?
+  licenseExpiry  DateTime?
+  version        String?
+
+  clientId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client  Client   @relation(fields: [clientId], references: [id])
+  tickets Ticket[] @relation("TicketAssets")
+
+  @@index([clientId])
+  @@index([type])
+  @@index([status])
+  @@map("assets")
+}
+
+enum AssetType {
+  WORKSTATION
+  LAPTOP
+  SERVER
+  NETWORK_DEVICE
+  PRINTER
+  MOBILE_DEVICE
+  SOFTWARE_LICENSE
+  PERIPHERAL
+  OTHER
+}
+
+enum AssetStatus {
+  ACTIVE
+  INACTIVE
+  IN_REPAIR
+  RETIRED
+  DISPOSED
+  SPARE
+}
+
+// ============================================================================
+// CHANGE REQUESTS (ITIL)
+// ============================================================================
+
+model ChangeRequest {
+  id          String             @id @default(cuid())
+  number      Int                @unique @default(autoincrement())
+  title       String
+  description String             @db.Text
+  reason      String             @db.Text
+  type        ChangeType         @default(STANDARD)
+  status      ChangeRequestStatus @default(DRAFT)
+  priority    TicketPriority     @default(MEDIUM)
+  risk        ChangeRisk         @default(LOW)
+
+  // Implementation details
+  implementationPlan String? @db.Text
+  rollbackPlan       String? @db.Text
+  testingPlan        String? @db.Text
+  scheduledStart     DateTime?
+  scheduledEnd       DateTime?
+  actualStart        DateTime?
+  actualEnd          DateTime?
+
+  // Approval
+  approvalNotes String? @db.Text
+  approvedAt    DateTime?
+
+  clientId    String
+  createdById String
+  approverId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client    Client @relation(fields: [clientId], references: [id])
+  createdBy User   @relation("ChangeCreator", fields: [createdById], references: [id])
+  approver  User?  @relation("ChangeApprover", fields: [approverId], references: [id])
+
+  comments ChangeRequestComment[]
+
+  @@index([status])
+  @@index([clientId])
+  @@map("change_requests")
+}
+
+model ChangeRequestComment {
+  id              String @id @default(cuid())
+  changeRequestId String
+  authorId        String
+  content         String @db.Text
+
+  createdAt DateTime @default(now())
+
+  changeRequest ChangeRequest @relation(fields: [changeRequestId], references: [id], onDelete: Cascade)
+  author        User          @relation(fields: [authorId], references: [id])
+
+  @@map("change_request_comments")
+}
+
+enum ChangeType {
+  STANDARD
+  NORMAL
+  EMERGENCY
+}
+
+enum ChangeRequestStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ChangeRisk {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ============================================================================
+// KNOWLEDGE BASE
+// ============================================================================
+
+model KnowledgeArticle {
+  id        String  @id @default(cuid())
+  title     String
+  content   String  @db.Text
+  category  String?
+  tags      String[] // PostgreSQL array
+  isPublic  Boolean  @default(false)
+  authorId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([category])
+  @@map("knowledge_articles")
+}
+
+// ============================================================================
+// EMAIL SYNC TRACKING
+// ============================================================================
+
+model EmailSyncState {
+  id              String   @id @default(cuid())
+  mailbox         String   @unique
+  lastSyncedAt    DateTime?
+  deltaLink       String?  @db.Text
+  skipToken       String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("email_sync_state")
+}
