@@ -1,0 +1,17 @@
+version: "3.8"
+
+# Development override - run with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# This skips nginx/certbot and exposes the app directly on port 3000
+
+services:
+  app:
+    ports:
+      - "3000:3000"
+
+  nginx:
+    profiles:
+      - disabled
+
+  certbot:
+    profiles:
+      - disabled
