@@ -1,4 +1,4 @@
-import openai from "./openai-client";
+import getOpenAIClient from "./openai-client";
 
 interface TicketComment {
   content: string;
@@ -52,6 +52,7 @@ ${ticket.description}`;
       userMessage += `\n\n--- End of Conversation History ---`;
     }
 
+    const openai = getOpenAIClient();
     const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [

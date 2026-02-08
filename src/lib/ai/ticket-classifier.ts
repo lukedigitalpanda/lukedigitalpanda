@@ -1,4 +1,4 @@
-import openai from "./openai-client";
+import getOpenAIClient from "./openai-client";
 
 export interface TicketClassification {
   category: string;
@@ -53,6 +53,7 @@ Subject: ${subject}
 
 Description: ${description}`;
 
+    const openai = getOpenAIClient();
     const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [

@@ -1,4 +1,4 @@
-import openai from "./openai-client";
+import getOpenAIClient from "./openai-client";
 
 export interface SentimentAnalysis {
   sentiment: "positive" | "neutral" | "negative" | "frustrated";
@@ -54,6 +54,7 @@ export async function analyzeSentiment(
       };
     }
 
+    const openai = getOpenAIClient();
     const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [

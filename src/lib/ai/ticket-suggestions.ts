@@ -1,4 +1,4 @@
-import openai from "./openai-client";
+import getOpenAIClient from "./openai-client";
 
 export interface TicketSuggestion {
   suggestion: string;
@@ -58,6 +58,7 @@ Description: ${ticket.description}`;
       userMessage += `\n--- End of Knowledge Base Articles ---`;
     }
 
+    const openai = getOpenAIClient();
     const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
