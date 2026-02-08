@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Send, CheckCircle } from "lucide-react";
+import { ArrowLeft, Send, CheckCircle, Upload, X, FileIcon } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import {
 import { usePortal } from "@/lib/portal-context";
 
 interface TicketResult {
+  id: string;
   number: number;
   subject: string;
   message: string;
@@ -32,6 +33,9 @@ export default function PortalSubmitPage() {
   const [subject, setSubject] = useState("");
   const [priority, setPriority] = useState("MEDIUM");
   const [description, setDescription] = useState("");
+
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +66,26 @@ export default function PortalSubmitPage() {
         throw new Error(data.error || "Failed to submit ticket");
       }
 
+      // Upload any pending files
+      if (data.id && pendingFiles.length > 0) {
+        for (const file of pendingFiles) {
+          try {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("ticketId", data.id);
+            await fetch("/api/attachments", {
+              method: "POST",
+              headers: { "x-portal-upload": "true" },
+              body: formData,
+            });
+          } catch {
+            console.error(`Failed to upload attachment: ${file.name}`);
+          }
+        }
+      }
+
       setResult({
+        id: data.id,
         number: data.number,
         subject: data.subject,
         message: data.message,
@@ -81,6 +104,7 @@ export default function PortalSubmitPage() {
     setSubject("");
     setPriority("MEDIUM");
     setDescription("");
+    setPendingFiles([]);
     setResult(null);
     setError(null);
   };
@@ -232,6 +256,66 @@ export default function PortalSubmitPage() {
                 placeholder="Please describe your issue in detail..."
                 required
               />
+            </div>
+
+            {/* Attachments */}
+            <div className="space-y-2">
+              <Label>Attachments</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.7z,.json,.eml"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (!files) return;
+                  const newFiles = Array.from(files).filter(
+                    (f) => f.size <= 25 * 1024 * 1024
+                  );
+                  setPendingFiles((prev) => [...prev, ...newFiles]);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+              />
+              <div
+                className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 p-4 hover:border-gray-400 hover:bg-gray-50 cursor-pointer transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-6 w-6 text-gray-400 mb-1" />
+                <p className="text-sm text-gray-500">
+                  Click to add files (up to 25MB each)
+                </p>
+              </div>
+              {pendingFiles.length > 0 && (
+                <div className="space-y-1.5 mt-2">
+                  {pendingFiles.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="flex items-center gap-2 rounded border bg-gray-50 px-3 py-1.5 text-sm"
+                    >
+                      <FileIcon className="h-4 w-4 shrink-0 text-gray-400" />
+                      <span className="truncate flex-1">{file.name}</span>
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {file.size < 1024 * 1024
+                          ? `${(file.size / 1024).toFixed(1)} KB`
+                          : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
+                      </span>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded p-0.5 hover:bg-gray-200"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingFiles((prev) =>
+                            prev.filter((_, i) => i !== idx)
+                          );
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Error */}

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Upload, X, FileIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -61,6 +61,10 @@ export default function NewTicketPage() {
   // Data lists
   const [clients, setClients] = useState<Client[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
+
+  // File attachments (buffered until ticket is created)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // UI state
   const [submitting, setSubmitting] = useState(false);
@@ -163,6 +167,20 @@ export default function NewTicketPage() {
       }
 
       const ticket = await res.json();
+
+      // Upload any pending files
+      for (const file of pendingFiles) {
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("ticketId", ticket.id);
+          await fetch("/api/attachments", { method: "POST", body: formData });
+        } catch {
+          // Don't block redirect if an attachment upload fails
+          console.error(`Failed to upload attachment: ${file.name}`);
+        }
+      }
+
       router.push(`/tickets/${ticket.id}`);
     } catch (err) {
       setError(
@@ -306,6 +324,66 @@ export default function NewTicketPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Attachments */}
+            <div className="space-y-2">
+              <Label>Attachments</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.7z,.json,.eml"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (!files) return;
+                  const newFiles = Array.from(files).filter(
+                    (f) => f.size <= 25 * 1024 * 1024
+                  );
+                  setPendingFiles((prev) => [...prev, ...newFiles]);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+              />
+              <div
+                className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 hover:border-primary/50 hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-6 w-6 text-muted-foreground mb-1" />
+                <p className="text-sm text-muted-foreground">
+                  Click to add files (up to 25MB each)
+                </p>
+              </div>
+              {pendingFiles.length > 0 && (
+                <div className="space-y-1.5 mt-2">
+                  {pendingFiles.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="flex items-center gap-2 rounded border bg-muted/30 px-3 py-1.5 text-sm"
+                    >
+                      <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate flex-1">{file.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {file.size < 1024 * 1024
+                          ? `${(file.size / 1024).toFixed(1)} KB`
+                          : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
+                      </span>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded p-0.5 hover:bg-muted"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingFiles((prev) =>
+                            prev.filter((_, i) => i !== idx)
+                          );
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
 

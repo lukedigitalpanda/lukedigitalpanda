@@ -31,8 +31,9 @@ RUN adduser --system --uid 1001 nextjs
 # Copy public assets
 COPY --from=builder /app/public ./public
 
-# Set up .next cache directory
+# Set up .next cache directory and uploads directory
 RUN mkdir .next && chown nextjs:nodejs .next
+RUN mkdir -p /app/uploads && chown nextjs:nodejs /app/uploads
 
 # Copy standalone build output
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Activity,
   Timer,
+  Paperclip,
   CheckCircle,
   AlertCircle,
   User,
@@ -46,6 +47,7 @@ import {
   formatDate,
   formatRelativeTime,
 } from "@/lib/utils";
+import { FileUpload, AttachmentList } from "@/components/ui/file-upload";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -115,6 +117,13 @@ interface TicketDetail {
   comments: TicketComment[];
   activities: TicketActivity[];
   timeEntries: TimeEntry[];
+  attachments: {
+    id: string;
+    fileName: string;
+    fileUrl: string;
+    fileSize: number;
+    mimeType: string;
+  }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -462,6 +471,15 @@ export default function TicketDetailPage() {
                 <Timer className="h-4 w-4" />
                 Time Entries
               </TabsTrigger>
+              <TabsTrigger value="attachments" className="gap-1.5">
+                <Paperclip className="h-4 w-4" />
+                Attachments
+                {ticket.attachments.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 min-w-[20px] px-1.5">
+                    {ticket.attachments.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
             </TabsList>
 
             {/* ------- Comments Tab ------- */}
@@ -688,6 +706,27 @@ export default function TicketDetailPage() {
                   {addingTime ? "Adding..." : "Add"}
                 </Button>
               </form>
+            </TabsContent>
+
+            {/* ------- Attachments Tab ------- */}
+            <TabsContent value="attachments" className="space-y-4">
+              <AttachmentList attachments={ticket.attachments} />
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <p className="text-sm font-medium mb-3">Upload Files</p>
+                <FileUpload
+                  ticketId={ticket.id}
+                  onUpload={(attachment) => {
+                    setTicket((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            attachments: [...prev.attachments, attachment],
+                          }
+                        : prev
+                    );
+                  }}
+                />
+              </div>
             </TabsContent>
           </Tabs>
         </div>
