@@ -148,9 +148,9 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!subject || !description || !clientId) {
+    if (!subject || !clientId) {
       return NextResponse.json(
-        { error: "Subject, description, and clientId are required" },
+        { error: "Subject and clientId are required" },
         { status: 400 }
       );
     }
@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
     const ticket = await prisma.ticket.create({
       data: {
         subject,
-        description,
+        description: description || "",
         priority: ticketPriority,
         category: category || null,
         subcategory: subcategory || null,

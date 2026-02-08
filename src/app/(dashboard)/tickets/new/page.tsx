@@ -149,7 +149,7 @@ export default function NewTicketPage() {
         priority,
         category,
       };
-      if (assigneeId) body.assigneeId = assigneeId;
+      if (assigneeId && assigneeId !== "none") body.assigneeId = assigneeId;
 
       const res = await fetch("/api/tickets", {
         method: "POST",
@@ -298,7 +298,7 @@ export default function NewTicketPage() {
                   <SelectValue placeholder="Leave unassigned" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  <SelectItem value="none">Unassigned</SelectItem>
                   {technicians.map((tech) => (
                     <SelectItem key={tech.id} value={tech.id}>
                       {tech.name}

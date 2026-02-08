@@ -5,10 +5,12 @@ import {
   Mail,
   Shield,
   Users,
+  Tags,
   Check,
   X,
   Clock,
   Sparkles,
+  Plus,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,13 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatDate } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +42,7 @@ interface UserEntry {
   name: string;
   email: string;
   role: string;
+  jobTitle?: string;
   isActive: boolean;
 }
 
@@ -41,6 +51,13 @@ interface SLAMatrix {
   HIGH: { Gold: number; Silver: number; Bronze: number };
   MEDIUM: { Gold: number; Silver: number; Bronze: number };
   LOW: { Gold: number; Silver: number; Bronze: number };
+}
+
+interface CategorySettings {
+  ticketCategories: string[];
+  knowledgeCategories: string[];
+  assetTypes: string[];
+  changeTypes: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -65,14 +82,10 @@ const defaultSLA: SLAMatrix = {
 };
 
 const PRIORITIES: (keyof SLAMatrix)[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-const SLA_LEVELS: ("Gold" | "Silver" | "Bronze")[] = [
-  "Gold",
-  "Silver",
-  "Bronze",
-];
+const SLA_LEVELS: ("Gold" | "Silver" | "Bronze")[] = ["Gold", "Silver", "Bronze"];
 
 // ---------------------------------------------------------------------------
-// Loading skeletons
+// Loading skeleton
 // ---------------------------------------------------------------------------
 
 function SectionSkeleton() {
@@ -93,26 +106,164 @@ function SectionSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
+// Editable Category List component
+// ---------------------------------------------------------------------------
+
+function CategoryList({
+  title,
+  description,
+  items,
+  onAdd,
+  onRemove,
+}: {
+  title: string;
+  description: string;
+  items: string[];
+  onAdd: (item: string) => void;
+  onRemove: (index: number) => void;
+}) {
+  const [newItem, setNewItem] = useState("");
+
+  function handleAdd() {
+    const trimmed = newItem.trim();
+    if (!trimmed) return;
+    if (items.some((i) => i.toLowerCase() === trimmed.toLowerCase())) return;
+    onAdd(trimmed);
+    setNewItem("");
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        <CardDescription className="text-xs">{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {items.map((item, idx) => (
+            <Badge
+              key={idx}
+              variant="secondary"
+              className="gap-1.5 pl-3 pr-1.5 py-1.5"
+            >
+              {item}
+              <button
+                type="button"
+                onClick={() => onRemove(idx)}
+                className="ml-1 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Add new..."
+            value={newItem}
+            onChange={(e) => setNewItem(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+            className="max-w-xs"
+          />
+          <Button type="button" variant="outline" size="sm" onClick={handleAdd}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("email");
+  const [activeTab, setActiveTab] = useState("categories");
 
-  // Email tab state
+  // ---- Categories tab state ----
+  const [categories, setCategories] = useState<CategorySettings | null>(null);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesSaving, setCategoriesSaving] = useState(false);
+  const [categoriesSaved, setCategoriesSaved] = useState(false);
+
+  // ---- Email tab state ----
   const [emailConnected, setEmailConnected] = useState(false);
   const [mailbox, setMailbox] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [emailLoading, setEmailLoading] = useState(true);
 
-  // SLA tab state
+  // ---- SLA tab state ----
   const [slaMatrix, setSlaMatrix] = useState<SLAMatrix>(defaultSLA);
   const [slaSaved, setSlaSaved] = useState(false);
 
-  // Users tab state
+  // ---- Users tab state ----
   const [users, setUsers] = useState<UserEntry[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUser, setNewUser] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "TECHNICIAN",
+    jobTitle: "",
+  });
+  const [createUserError, setCreateUserError] = useState<string | null>(null);
+  const [creatingUser, setCreatingUser] = useState(false);
+
+  // ---- Fetch categories ----
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        setCategoriesLoading(true);
+        const res = await fetch("/api/settings/categories");
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(data);
+        }
+      } catch {
+        // Use defaults
+      } finally {
+        setCategoriesLoading(false);
+      }
+    }
+    if (activeTab === "categories") fetchCategories();
+  }, [activeTab]);
+
+  async function saveCategories() {
+    if (!categories) return;
+    try {
+      setCategoriesSaving(true);
+      const res = await fetch("/api/settings/categories", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(categories),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(data);
+        setCategoriesSaved(true);
+        setTimeout(() => setCategoriesSaved(false), 3000);
+      }
+    } catch (err) {
+      console.error("Save categories error:", err);
+    } finally {
+      setCategoriesSaving(false);
+    }
+  }
+
+  function updateCategoryList(key: keyof CategorySettings, items: string[]) {
+    if (!categories) return;
+    setCategories({ ...categories, [key]: items });
+    setCategoriesSaved(false);
+  }
 
   // ---- Email integration ----
   useEffect(() => {
@@ -127,15 +278,12 @@ export default function SettingsPage() {
           setLastSync(json.lastSyncedAt ?? null);
         }
       } catch {
-        // Email not configured - that's fine
+        // Email not configured
       } finally {
         setEmailLoading(false);
       }
     }
-
-    if (activeTab === "email") {
-      fetchEmailStatus();
-    }
+    if (activeTab === "email") fetchEmailStatus();
   }, [activeTab]);
 
   async function handleSync() {
@@ -169,7 +317,6 @@ export default function SettingsPage() {
   }
 
   function handleSaveSLA() {
-    // Placeholder: stores in local state only for now
     setSlaSaved(true);
     setTimeout(() => setSlaSaved(false), 3000);
   }
@@ -191,28 +338,60 @@ export default function SettingsPage() {
         setUsersLoading(false);
       }
     }
-
-    if (activeTab === "users") {
-      fetchUsers();
-    }
+    if (activeTab === "users") fetchUsers();
   }, [activeTab]);
+
+  async function handleCreateUser(e: React.FormEvent) {
+    e.preventDefault();
+    setCreateUserError(null);
+    if (!newUser.name || !newUser.email || !newUser.password) {
+      setCreateUserError("Name, email, and password are required.");
+      return;
+    }
+    try {
+      setCreatingUser(true);
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newUser),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Failed to create user");
+      }
+      const user = await res.json();
+      setUsers((prev) => [...prev, user]);
+      setShowCreateUser(false);
+      setNewUser({
+        name: "",
+        email: "",
+        password: "",
+        role: "TECHNICIAN",
+        jobTitle: "",
+      });
+    } catch (err) {
+      setCreateUserError(
+        err instanceof Error ? err.message : "Failed to create user"
+      );
+    } finally {
+      setCreatingUser(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">
-          Manage system configuration and integrations
+          Manage system configuration, categories, and integrations
         </p>
       </div>
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="email" className="gap-2">
-            <Mail className="h-4 w-4" />
-            Email Integration
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="categories" className="gap-2">
+            <Tags className="h-4 w-4" />
+            Categories
           </TabsTrigger>
           <TabsTrigger value="sla" className="gap-2">
             <Shield className="h-4 w-4" />
@@ -222,91 +401,110 @@ export default function SettingsPage() {
             <Users className="h-4 w-4" />
             Users
           </TabsTrigger>
+          <TabsTrigger value="email" className="gap-2">
+            <Mail className="h-4 w-4" />
+            Email Integration
+          </TabsTrigger>
         </TabsList>
 
-        {/* ============================================================== */}
-        {/* Email Tab                                                       */}
-        {/* ============================================================== */}
-        <TabsContent value="email">
-          {emailLoading ? (
+        {/* ================================================================ */}
+        {/* Categories Tab                                                    */}
+        {/* ================================================================ */}
+        <TabsContent value="categories">
+          {categoriesLoading || !categories ? (
             <SectionSkeleton />
           ) : (
             <div className="space-y-6">
-              {/* Connection status */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Mail className="h-5 w-5" />
-                    Microsoft 365 Email Integration
-                  </CardTitle>
-                  <CardDescription>
-                    Sync emails from your shared mailbox to create and update
-                    tickets automatically.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Status indicator */}
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                        emailConnected
-                          ? "bg-green-100 text-green-600"
-                          : "bg-red-100 text-red-600"
-                      }`}
-                    >
-                      {emailConnected ? (
-                        <Check className="h-5 w-5" />
-                      ) : (
-                        <X className="h-5 w-5" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium">
-                        {emailConnected ? "Connected" : "Not Connected"}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {emailConnected
-                          ? "Email sync is active and running."
-                          : "Configure your Microsoft Graph credentials to enable email sync."}
-                      </p>
-                    </div>
-                  </div>
+              <CategoryList
+                title="Ticket Categories"
+                description="Categories available when creating or classifying support tickets."
+                items={categories.ticketCategories}
+                onAdd={(item) =>
+                  updateCategoryList("ticketCategories", [
+                    ...categories.ticketCategories,
+                    item,
+                  ])
+                }
+                onRemove={(idx) =>
+                  updateCategoryList(
+                    "ticketCategories",
+                    categories.ticketCategories.filter((_, i) => i !== idx)
+                  )
+                }
+              />
 
-                  {/* Mailbox */}
-                  {mailbox && (
-                    <div className="space-y-1">
-                      <Label className="text-xs font-medium text-muted-foreground uppercase">
-                        Mailbox
-                      </Label>
-                      <p className="font-mono text-sm">{mailbox}</p>
-                    </div>
-                  )}
+              <CategoryList
+                title="Knowledge Base Categories"
+                description="Categories for organizing knowledge base articles."
+                items={categories.knowledgeCategories}
+                onAdd={(item) =>
+                  updateCategoryList("knowledgeCategories", [
+                    ...categories.knowledgeCategories,
+                    item,
+                  ])
+                }
+                onRemove={(idx) =>
+                  updateCategoryList(
+                    "knowledgeCategories",
+                    categories.knowledgeCategories.filter((_, i) => i !== idx)
+                  )
+                }
+              />
 
-                  {/* Last sync */}
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium text-muted-foreground uppercase">
-                      Last Sync
-                    </Label>
-                    <p className="flex items-center gap-2 text-sm">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      {lastSync ? formatDate(lastSync) : "Never synced"}
-                    </p>
-                  </div>
+              <CategoryList
+                title="Asset Types"
+                description="Types of assets that can be tracked in the system."
+                items={categories.assetTypes}
+                onAdd={(item) =>
+                  updateCategoryList("assetTypes", [
+                    ...categories.assetTypes,
+                    item,
+                  ])
+                }
+                onRemove={(idx) =>
+                  updateCategoryList(
+                    "assetTypes",
+                    categories.assetTypes.filter((_, i) => i !== idx)
+                  )
+                }
+              />
 
-                  {/* Sync button */}
-                  <Button onClick={handleSync} disabled={syncing}>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    {syncing ? "Syncing..." : "Sync Now"}
-                  </Button>
-                </CardContent>
-              </Card>
+              <CategoryList
+                title="Change Request Types"
+                description="Types of change requests available in the system."
+                items={categories.changeTypes}
+                onAdd={(item) =>
+                  updateCategoryList("changeTypes", [
+                    ...categories.changeTypes,
+                    item,
+                  ])
+                }
+                onRemove={(idx) =>
+                  updateCategoryList(
+                    "changeTypes",
+                    categories.changeTypes.filter((_, i) => i !== idx)
+                  )
+                }
+              />
+
+              <div className="flex items-center gap-3">
+                <Button onClick={saveCategories} disabled={categoriesSaving}>
+                  {categoriesSaving ? "Saving..." : "Save All Categories"}
+                </Button>
+                {categoriesSaved && (
+                  <span className="flex items-center gap-1 text-sm text-green-600">
+                    <Check className="h-4 w-4" />
+                    Saved successfully
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </TabsContent>
 
-        {/* ============================================================== */}
-        {/* SLA Tab                                                         */}
-        {/* ============================================================== */}
+        {/* ================================================================ */}
+        {/* SLA Tab                                                           */}
+        {/* ================================================================ */}
         <TabsContent value="sla">
           <Card>
             <CardHeader>
@@ -373,9 +571,9 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* ============================================================== */}
-        {/* Users Tab                                                       */}
-        {/* ============================================================== */}
+        {/* ================================================================ */}
+        {/* Users Tab                                                         */}
+        {/* ================================================================ */}
         <TabsContent value="users">
           {usersLoading ? (
             <SectionSkeleton />
@@ -391,11 +589,124 @@ export default function SettingsPage() {
                     View and manage system users and their roles.
                   </CardDescription>
                 </div>
-                <Button variant="outline" disabled>
-                  Invite User
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCreateUser(!showCreateUser)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add User
                 </Button>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {/* Create user form */}
+                {showCreateUser && (
+                  <Card className="border-primary/20 bg-muted/30">
+                    <CardContent className="pt-6">
+                      <form onSubmit={handleCreateUser} className="space-y-4">
+                        {createUserError && (
+                          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            {createUserError}
+                          </div>
+                        )}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Name</Label>
+                            <Input
+                              placeholder="Full name"
+                              value={newUser.name}
+                              onChange={(e) =>
+                                setNewUser({ ...newUser, name: e.target.value })
+                              }
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Email</Label>
+                            <Input
+                              type="email"
+                              placeholder="user@company.com"
+                              value={newUser.email}
+                              onChange={(e) =>
+                                setNewUser({ ...newUser, email: e.target.value })
+                              }
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Password</Label>
+                            <Input
+                              type="password"
+                              placeholder="Set a password"
+                              value={newUser.password}
+                              onChange={(e) =>
+                                setNewUser({
+                                  ...newUser,
+                                  password: e.target.value,
+                                })
+                              }
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Role</Label>
+                            <Select
+                              value={newUser.role}
+                              onValueChange={(val) =>
+                                setNewUser({ ...newUser, role: val })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ADMIN">Admin</SelectItem>
+                                <SelectItem value="MANAGER">Manager</SelectItem>
+                                <SelectItem value="TECHNICIAN">
+                                  Technician
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Job Title (optional)</Label>
+                            <Input
+                              placeholder="e.g. Senior Engineer"
+                              value={newUser.jobTitle}
+                              onChange={(e) =>
+                                setNewUser({
+                                  ...newUser,
+                                  jobTitle: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            type="submit"
+                            size="sm"
+                            disabled={creatingUser}
+                          >
+                            {creatingUser ? "Creating..." : "Create User"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setShowCreateUser(false);
+                              setCreateUserError(null);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Users table */}
                 {users.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12">
                     <Users className="mb-4 h-10 w-10 text-muted-foreground" />
@@ -450,6 +761,84 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+          )}
+        </TabsContent>
+
+        {/* ================================================================ */}
+        {/* Email Tab                                                         */}
+        {/* ================================================================ */}
+        <TabsContent value="email">
+          {emailLoading ? (
+            <SectionSkeleton />
+          ) : (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Mail className="h-5 w-5" />
+                    Microsoft 365 Email Integration
+                  </CardTitle>
+                  <CardDescription>
+                    Sync emails from your shared mailbox to create and update
+                    tickets automatically.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                        emailConnected
+                          ? "bg-green-100 text-green-600"
+                          : "bg-red-100 text-red-600"
+                      }`}
+                    >
+                      {emailConnected ? (
+                        <Check className="h-5 w-5" />
+                      ) : (
+                        <X className="h-5 w-5" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium">
+                        {emailConnected ? "Connected" : "Not Connected"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {emailConnected
+                          ? "Email sync is active and running."
+                          : "Set the following environment variables on your server to enable email sync: MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_TENANT_ID, MS_GRAPH_MAILBOX"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {mailbox && (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-muted-foreground uppercase">
+                        Mailbox
+                      </Label>
+                      <p className="font-mono text-sm">{mailbox}</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase">
+                      Last Sync
+                    </Label>
+                    <p className="flex items-center gap-2 text-sm">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      {lastSync ? formatDate(lastSync) : "Never synced"}
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={handleSync}
+                    disabled={syncing || !emailConnected}
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {syncing ? "Syncing..." : "Sync Now"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           )}
         </TabsContent>
       </Tabs>

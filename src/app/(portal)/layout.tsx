@@ -58,9 +58,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
         <footer className="bg-white border-t border-gray-200 mt-auto">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <p className="text-center text-sm text-gray-500">
-              Powered by Digital Panda MSP Service Desk
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                Powered by Digital Panda MSP Service Desk
+              </p>
+              <Link href="/login" className="text-sm text-primary hover:underline">
+                Staff Login
+              </Link>
+            </div>
           </div>
         </footer>
       </div>

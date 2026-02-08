@@ -49,8 +49,12 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        // Simple password check for development (seed data uses plaintext "demo")
         // TODO: Replace with bcrypt.compare in production
-        // const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
+        const isValid = credentials.password === user.passwordHash;
+        if (!isValid) {
+          return null;
+        }
 
         return {
           id: user.id,
