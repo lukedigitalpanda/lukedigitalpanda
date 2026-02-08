@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -110,7 +110,36 @@ export default function DashboardLayout({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<
+    { id: string; message: string; time: string; read: boolean; href: string }[]
+  >([]);
   const pathname = usePathname();
+
+  useEffect(() => {
+    async function fetchNotifications() {
+      try {
+        const res = await fetch("/api/tickets?page=1&limit=5&sort=createdAt&order=desc");
+        if (!res.ok) return;
+        const data = await res.json();
+        const tickets = Array.isArray(data) ? data : data.tickets || [];
+        setNotifications(
+          tickets.map((t: any) => ({
+            id: t.id,
+            message: `Ticket #${t.number}: ${t.subject}`,
+            time: new Date(t.createdAt).toLocaleDateString(),
+            read: ["RESOLVED", "CLOSED"].includes(t.status),
+            href: `/tickets/${t.id}`,
+          }))
+        );
+      } catch {
+        // Silently fail - notifications are non-critical
+      }
+    }
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -197,18 +226,79 @@ export default function DashboardLayout({
           {/* Right side actions */}
           <div className="flex items-center gap-4">
             {/* Notifications */}
-            <button
-              className="relative rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-              aria-label="Notifications"
-            >
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setNotificationsOpen(!notificationsOpen);
+                  setUserMenuOpen(false);
+                }}
+                className="relative rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                    {notifications.filter((n) => !n.read).length}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setNotificationsOpen(false)}
+                  />
+                  <div className="absolute right-0 z-50 mt-2 w-80 rounded-md border bg-white shadow-lg">
+                    <div className="border-b px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Recent Tickets
+                      </p>
+                    </div>
+                    {notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-sm text-slate-500">
+                        No recent activity
+                      </div>
+                    ) : (
+                      <div className="max-h-80 overflow-y-auto">
+                        {notifications.map((notif) => (
+                          <Link
+                            key={notif.id}
+                            href={notif.href}
+                            className={`block border-b px-4 py-3 text-sm transition-colors hover:bg-slate-50 ${
+                              !notif.read ? "bg-blue-50/50" : ""
+                            }`}
+                            onClick={() => setNotificationsOpen(false)}
+                          >
+                            <p className="truncate font-medium text-slate-800">
+                              {notif.message}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {notif.time}
+                            </p>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    <Link
+                      href="/tickets"
+                      className="block border-t px-4 py-2 text-center text-xs font-medium text-blue-600 hover:bg-slate-50"
+                      onClick={() => setNotificationsOpen(false)}
+                    >
+                      View all tickets
+                    </Link>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* User Avatar Dropdown */}
             <div className="relative">
               <button
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                onClick={() => {
+                  setUserMenuOpen(!userMenuOpen);
+                  setNotificationsOpen(false);
+                }}
                 className="flex items-center gap-2 rounded-md p-1 hover:bg-slate-100"
                 aria-label="User menu"
               >
@@ -242,7 +332,10 @@ export default function DashboardLayout({
                     </Link>
                     <button
                       className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                      onClick={() => setUserMenuOpen(false)}
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        window.location.href = "/api/auth/signout";
+                      }}
                     >
                       <LogOut className="h-4 w-4" />
                       Sign out

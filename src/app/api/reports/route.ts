@@ -38,22 +38,19 @@ async function getSLAReport(from: Date, to: Date) {
     },
     include: {
       client: { select: { name: true } },
-      assignee: { select: { name: true } },
     },
   });
 
   const total = tickets.length;
   const breached = tickets.filter((t) => t.slaBreached).length;
-  const compliance = total > 0 ? Math.round(((total - breached) / total) * 100) : 100;
+  const compliancePercent = total > 0 ? Math.round(((total - breached) / total) * 100) : 100;
 
-  // SLA by priority
-  const byPriority = ["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((priority) => {
+  const complianceByPriority = ["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((priority) => {
     const priorityTickets = tickets.filter((t) => t.priority === priority);
     const priorityBreached = priorityTickets.filter((t) => t.slaBreached).length;
     return {
       priority,
       total: priorityTickets.length,
-      breached: priorityBreached,
       compliance:
         priorityTickets.length > 0
           ? Math.round(((priorityTickets.length - priorityBreached) / priorityTickets.length) * 100)
@@ -70,14 +67,13 @@ async function getSLAReport(from: Date, to: Date) {
       client: t.client.name,
       priority: t.priority,
       slaDeadline: t.slaDeadline,
-      resolvedAt: t.resolvedAt,
     }));
 
-  return { compliance, total, breached, byPriority, breachedTickets };
+  return { compliancePercent, complianceByPriority, breachedTickets };
 }
 
 async function getTechnicianReport(from: Date, to: Date) {
-  const technicians = await prisma.user.findMany({
+  const users = await prisma.user.findMany({
     where: { role: { in: ["TECHNICIAN", "ADMIN", "MANAGER"] } },
     select: {
       id: true,
@@ -98,14 +94,11 @@ async function getTechnicianReport(from: Date, to: Date) {
     },
   });
 
-  return technicians.map((tech) => {
+  const technicians = users.map((tech) => {
     const resolved = tech.assignedTickets.filter((t) =>
       ["RESOLVED", "CLOSED"].includes(t.status)
     );
     const totalMinutes = tech.timeEntries.reduce((sum, e) => sum + e.minutes, 0);
-    const billableMinutes = tech.timeEntries
-      .filter((e) => e.billable)
-      .reduce((sum, e) => sum + e.minutes, 0);
 
     let avgResolutionHours = 0;
     if (resolved.length > 0) {
@@ -121,22 +114,22 @@ async function getTechnicianReport(from: Date, to: Date) {
     return {
       id: tech.id,
       name: tech.name,
-      ticketsAssigned: tech.assignedTickets.length,
-      ticketsResolved: resolved.length,
+      assigned: tech.assignedTickets.length,
+      resolved: resolved.length,
       avgResolutionHours,
       totalHours: Math.round((totalMinutes / 60) * 10) / 10,
-      billableHours: Math.round((billableMinutes / 60) * 10) / 10,
     };
   });
+
+  return { technicians };
 }
 
 async function getClientReport(from: Date, to: Date) {
-  const clients = await prisma.client.findMany({
+  const allClients = await prisma.client.findMany({
     where: { isActive: true },
     select: {
       id: true,
       name: true,
-      slaLevel: true,
       tickets: {
         where: { createdAt: { gte: from, lte: to } },
         select: {
@@ -144,14 +137,12 @@ async function getClientReport(from: Date, to: Date) {
           status: true,
           slaBreached: true,
           slaDeadline: true,
-          createdAt: true,
-          resolvedAt: true,
         },
       },
     },
   });
 
-  return clients.map((client) => {
+  const clients = allClients.map((client) => {
     const openTickets = client.tickets.filter(
       (t) => !["RESOLVED", "CLOSED"].includes(t.status)
     ).length;
@@ -162,26 +153,16 @@ async function getClientReport(from: Date, to: Date) {
         ? Math.round(((withSLA.length - breached) / withSLA.length) * 100)
         : 100;
 
-    const resolved = client.tickets.filter((t) => t.resolvedAt);
-    let avgResolutionHours = 0;
-    if (resolved.length > 0) {
-      const totalMs = resolved.reduce(
-        (sum, t) => sum + (t.resolvedAt!.getTime() - t.createdAt.getTime()),
-        0
-      );
-      avgResolutionHours = Math.round((totalMs / resolved.length / 3600000) * 10) / 10;
-    }
-
     return {
       id: client.id,
       name: client.name,
-      slaLevel: client.slaLevel,
       totalTickets: client.tickets.length,
       openTickets,
       slaCompliance,
-      avgResolutionHours,
     };
   });
+
+  return { clients };
 }
 
 async function getVolumeReport(from: Date, to: Date) {
@@ -192,6 +173,7 @@ async function getVolumeReport(from: Date, to: Date) {
       status: true,
       category: true,
       createdAt: true,
+      resolvedAt: true,
     },
     orderBy: { createdAt: "asc" },
   });
@@ -203,19 +185,19 @@ async function getVolumeReport(from: Date, to: Date) {
     dailyVolume[day] = (dailyVolume[day] || 0) + 1;
   });
 
-  const volumeOverTime = Object.entries(dailyVolume).map(([date, count]) => ({
+  const ticketsOverTime = Object.entries(dailyVolume).map(([date, count]) => ({
     date,
     count,
   }));
 
   // Group by category
-  const byCategory: Record<string, number> = {};
+  const byCategoryMap: Record<string, number> = {};
   tickets.forEach((t) => {
     const cat = t.category || "Uncategorised";
-    byCategory[cat] = (byCategory[cat] || 0) + 1;
+    byCategoryMap[cat] = (byCategoryMap[cat] || 0) + 1;
   });
 
-  const categoryData = Object.entries(byCategory).map(([category, count]) => ({
+  const byCategory = Object.entries(byCategoryMap).map(([category, count]) => ({
     category,
     count,
   }));
@@ -224,13 +206,22 @@ async function getVolumeReport(from: Date, to: Date) {
   const totalResolved = tickets.filter((t) =>
     ["RESOLVED", "CLOSED"].includes(t.status)
   ).length;
-  const totalOpen = tickets.filter(
-    (t) => !["RESOLVED", "CLOSED"].includes(t.status)
-  ).length;
+  const totalOpen = totalCreated - totalResolved;
+
+  // Average resolution time
+  const resolved = tickets.filter((t) => t.resolvedAt);
+  let avgResolutionHours = 0;
+  if (resolved.length > 0) {
+    const totalMs = resolved.reduce(
+      (sum, t) => sum + (t.resolvedAt!.getTime() - t.createdAt.getTime()),
+      0
+    );
+    avgResolutionHours = Math.round((totalMs / resolved.length / 3600000) * 10) / 10;
+  }
 
   return {
-    volumeOverTime,
-    byCategory: categoryData,
-    summary: { totalCreated, totalResolved, totalOpen },
+    ticketsOverTime,
+    byCategory,
+    summary: { totalCreated, totalResolved, totalOpen, avgResolutionHours },
   };
 }

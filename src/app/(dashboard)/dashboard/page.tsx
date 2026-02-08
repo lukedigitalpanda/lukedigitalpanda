@@ -212,7 +212,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchDashboard() {
       try {
-        setLoading(true);
+        if (!data) setLoading(true);
         setError(null);
 
         const res = await fetch("/api/dashboard");
@@ -225,16 +225,20 @@ export default function DashboardPage() {
         setData(json);
       } catch (err) {
         console.error("Dashboard fetch error:", err);
-        setError(
-          err instanceof Error ? err.message : "An unexpected error occurred"
-        );
+        if (!data) {
+          setError(
+            err instanceof Error ? err.message : "An unexpected error occurred"
+          );
+        }
       } finally {
         setLoading(false);
       }
     }
 
     fetchDashboard();
-  }, []);
+    const interval = setInterval(fetchDashboard, 30000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Loading state -------------------------------------------------------
   if (loading) {
