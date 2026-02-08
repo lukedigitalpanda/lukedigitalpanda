@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         take: 10,
         orderBy: { createdAt: "desc" },
         include: {
-          client: { select: { name: true } },
+          client: { select: { id: true, name: true } },
           assignee: { select: { name: true } },
         },
       }),
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
         orderBy: { slaDeadline: "asc" },
         take: 10,
         include: {
-          client: { select: { name: true } },
+          client: { select: { id: true, name: true } },
         },
       }),
     ]);
@@ -137,8 +137,8 @@ export async function GET(request: NextRequest) {
       stats: {
         openTickets,
         inProgressTickets,
-        slaCompliance,
-        avgResolutionHours,
+        slaCompliancePercent: slaCompliance,
+        avgResolutionTimeHours: avgResolutionHours,
         ticketsThisWeek,
         ticketsLastWeek,
         slaBreachedCount,
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
       ticketsByStatus: statusData,
       ticketsByPriority: priorityData,
       recentTickets,
-      slaAtRiskTickets: atRiskTickets,
+      slaAtRisk: atRiskTickets,
     });
   } catch (error) {
     console.error("Dashboard API error:", error);
