@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { Monitor, LogIn, LogOut } from "lucide-react";
+import Image from "next/image";
+import { LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PortalProvider, usePortal } from "@/lib/portal-context";
 
@@ -14,8 +15,14 @@ function PortalHeader() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link href="/portal" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-            <Monitor className="h-6 w-6 text-primary" />
-            <span className="text-lg font-semibold text-gray-900">ServiceDesk Portal</span>
+            <Image
+              src="/logo.png"
+              alt="Digital Panda"
+              width={180}
+              height={78}
+              className="h-10 w-auto"
+              priority
+            />
           </Link>
 
           <div className="flex items-center gap-3">
