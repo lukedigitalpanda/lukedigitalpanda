@@ -148,12 +148,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET: List tickets for authenticated client admin (requires clientId + token in header)
+// GET: List tickets for authenticated client (requires clientId + token in header)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const token = request.headers.get("x-portal-token");
     const clientId = searchParams.get("clientId");
+    const contactId = searchParams.get("contactId");
     const status = searchParams.get("status");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
@@ -162,20 +163,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify the portal token
-    const session = await prisma.clientContact.findFirst({
-      where: {
-        id: token,
-        clientId,
-        isPrimary: true,
-      },
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    // If contactId is provided, allow any contact to view their own tickets
+    // Otherwise, require primary contact (admin) for org-wide view
+    if (contactId) {
+      // Verify the token matches the contact and client
+      const contact = await prisma.clientContact.findFirst({
+        where: { id: token, clientId },
+      });
+      if (!contact) {
+        return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      }
+    } else {
+      // Org-wide: require primary contact
+      const session = await prisma.clientContact.findFirst({
+        where: { id: token, clientId, isPrimary: true },
+      });
+      if (!session) {
+        return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      }
     }
 
     const where: any = { clientId };
+    if (contactId) {
+      where.contactId = contactId;
+    }
     if (status && status !== "ALL") {
       where.status = status;
     }
