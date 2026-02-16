@@ -90,17 +90,17 @@ interface ClientOption {
 // Constants
 // ---------------------------------------------------------------------------
 
-const ASSET_TYPES = [
-  { value: "WORKSTATION", label: "Workstation" },
-  { value: "LAPTOP", label: "Laptop" },
-  { value: "SERVER", label: "Server" },
-  { value: "NETWORK_DEVICE", label: "Network Device" },
-  { value: "PRINTER", label: "Printer" },
-  { value: "MOBILE_DEVICE", label: "Mobile Device" },
-  { value: "SOFTWARE_LICENSE", label: "Software License" },
-  { value: "PERIPHERAL", label: "Peripheral" },
-  { value: "OTHER", label: "Other" },
+const DEFAULT_ASSET_TYPES = [
+  "WORKSTATION", "LAPTOP", "SERVER", "NETWORK_DEVICE", "PRINTER",
+  "MOBILE_DEVICE", "SOFTWARE_LICENSE", "PERIPHERAL", "OTHER",
 ];
+
+function formatTypeLabel(type: string): string {
+  return type
+    .split("_")
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(" ");
+}
 
 const ASSET_STATUSES = [
   { value: "ACTIVE", label: "Active" },
@@ -116,8 +116,7 @@ const ASSET_STATUSES = [
 // ---------------------------------------------------------------------------
 
 function formatAssetType(type: string): string {
-  const found = ASSET_TYPES.find((t) => t.value === type);
-  return found ? found.label : type;
+  return formatTypeLabel(type);
 }
 
 function formatAssetStatus(status: string): string {
@@ -254,6 +253,7 @@ export default function AssetsPage() {
   const [form, setForm] = useState<NewAssetForm>(initialFormState);
   const [submitting, setSubmitting] = useState(false);
   const [clients, setClients] = useState<ClientOption[]>([]);
+  const [assetTypes, setAssetTypes] = useState<string[]>(DEFAULT_ASSET_TYPES);
   const [error, setError] = useState<string | null>(null);
 
   // ---- Fetch assets --------------------------------------------------------
@@ -302,6 +302,22 @@ export default function AssetsPage() {
   useEffect(() => {
     fetchAssets();
   }, [page, typeFilter, statusFilter]);
+
+  // ---- Fetch asset types from settings ------------------------------------
+  useEffect(() => {
+    async function fetchAssetTypes() {
+      try {
+        const res = await fetch("/api/settings/categories");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.assetTypes?.length) setAssetTypes(data.assetTypes);
+        }
+      } catch {
+        // use defaults
+      }
+    }
+    fetchAssetTypes();
+  }, []);
 
   // ---- Debounced search ----------------------------------------------------
   useEffect(() => {
@@ -422,9 +438,9 @@ export default function AssetsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Types</SelectItem>
-            {ASSET_TYPES.map((t) => (
-              <SelectItem key={t.value} value={t.value}>
-                {t.label}
+            {assetTypes.map((t) => (
+              <SelectItem key={t} value={t}>
+                {formatTypeLabel(t)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -666,9 +682,9 @@ export default function AssetsPage() {
                   <SelectValue placeholder="Select asset type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ASSET_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
+                  {assetTypes.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {formatTypeLabel(t)}
                     </SelectItem>
                   ))}
                 </SelectContent>

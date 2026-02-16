@@ -71,24 +71,36 @@ export default function NewChangeRequestPage() {
   const router = useRouter();
   const [form, setForm] = useState<FormData>(initialForm);
   const [clients, setClients] = useState<ClientOption[]>([]);
+  const [changeTypes, setChangeTypes] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch clients for the dropdown
+  // Fetch clients and categories on mount
   useEffect(() => {
     async function fetchClients() {
       try {
         const res = await fetch("/api/clients");
         if (!res.ok) return;
         const json = await res.json();
-        // Support both { data: [...] } and [...] shapes
         const list = Array.isArray(json) ? json : json.data ?? [];
         setClients(list.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
       } catch {
-        // silently fail - user can still fill form
+        // silently fail
+      }
+    }
+    async function fetchCategories() {
+      try {
+        const res = await fetch("/api/settings/categories");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.changeTypes) setChangeTypes(data.changeTypes);
+        }
+      } catch {
+        // silently fail
       }
     }
     fetchClients();
+    fetchCategories();
   }, []);
 
   function updateField<K extends keyof FormData>(key: K, value: FormData[K]) {
@@ -221,9 +233,11 @@ export default function NewChangeRequestPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="STANDARD">Standard</SelectItem>
-                    <SelectItem value="NORMAL">Normal</SelectItem>
-                    <SelectItem value="EMERGENCY">Emergency</SelectItem>
+                    {changeTypes.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t.charAt(0) + t.slice(1).toLowerCase()}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

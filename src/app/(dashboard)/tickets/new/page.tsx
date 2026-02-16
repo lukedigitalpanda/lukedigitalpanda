@@ -61,6 +61,7 @@ export default function NewTicketPage() {
   // Data lists
   const [clients, setClients] = useState<Client[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [ticketCategories, setTicketCategories] = useState<string[]>([]);
 
   // File attachments (buffered until ticket is created)
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -98,8 +99,21 @@ export default function NewTicketPage() {
       }
     }
 
+    async function fetchCategories() {
+      try {
+        const res = await fetch("/api/settings/categories");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ticketCategories) setTicketCategories(data.ticketCategories);
+        }
+      } catch (err) {
+        console.error("Error fetching categories:", err);
+      }
+    }
+
     fetchClients();
     fetchTechnicians();
+    fetchCategories();
   }, []);
 
   // AI classification
@@ -275,15 +289,11 @@ export default function NewTicketPage() {
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Network">Network</SelectItem>
-                    <SelectItem value="Hardware">Hardware</SelectItem>
-                    <SelectItem value="Software">Software</SelectItem>
-                    <SelectItem value="Email">Email</SelectItem>
-                    <SelectItem value="Security">Security</SelectItem>
-                    <SelectItem value="Backup">Backup</SelectItem>
-                    <SelectItem value="Printing">Printing</SelectItem>
-                    <SelectItem value="Account Access">Account Access</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
+                    {ticketCategories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -77,24 +77,15 @@ interface AssetDetail {
 // Constants
 // ---------------------------------------------------------------------------
 
-const ASSET_TYPE_LABELS: Record<string, string> = {
-  WORKSTATION: "Workstation",
-  LAPTOP: "Laptop",
-  SERVER: "Server",
-  NETWORK_DEVICE: "Network Device",
-  PRINTER: "Printer",
-  MOBILE_DEVICE: "Mobile Device",
-  SOFTWARE_LICENSE: "Software License",
-  PERIPHERAL: "Peripheral",
-  OTHER: "Other",
-};
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function formatAssetType(type: string): string {
-  return ASSET_TYPE_LABELS[type] || type;
+  return type
+    .split("_")
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function formatStatusLabel(status: string): string {
