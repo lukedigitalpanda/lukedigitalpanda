@@ -23,6 +23,9 @@ async function main() {
   console.log("Cleaned existing data");
 
   // Create users
+  const luke = await prisma.user.create({
+    data: { name: "Luke", email: "luke@digital-panda.co.uk", passwordHash: "cocacola123*", role: "ADMIN", jobTitle: "Administrator" },
+  });
   const admin = await prisma.user.create({
     data: { name: "Alex Morgan", email: "admin@digitalpanda.co.uk", passwordHash: "demo", role: "ADMIN", jobTitle: "Service Desk Manager" },
   });

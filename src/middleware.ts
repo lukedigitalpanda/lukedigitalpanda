@@ -24,9 +24,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Match the cookie name from auth config — nginx terminates SSL so the
+  // internal request is HTTP, but the cookie was set with the secure prefix.
+  const useSecureCookies = (process.env.NEXTAUTH_URL ?? "").startsWith("https://");
+  const cookieName = `${useSecureCookies ? "__Secure-" : ""}next-auth.session-token`;
+
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
+    cookieName,
   });
 
   // Not logged in - redirect to login
