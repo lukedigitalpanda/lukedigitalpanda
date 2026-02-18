@@ -25,7 +25,7 @@ interface TicketResult {
 }
 
 export default function PortalSubmitPage() {
-  const { isLoggedIn, contact } = usePortal();
+  const { isLoggedIn, contact, client } = usePortal();
 
   const [name, setName] = useState(isLoggedIn && contact ? contact.name : "");
   const [email, setEmail] = useState(isLoggedIn && contact ? contact.email : "");
@@ -57,6 +57,8 @@ export default function PortalSubmitPage() {
           subject: subject.trim(),
           priority,
           description: description.trim(),
+          clientId: client?.id || undefined,
+          contactId: contact?.id || undefined,
         }),
       });
 

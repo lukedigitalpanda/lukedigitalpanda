@@ -3,9 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-// Categories are stored in a simple JSON settings table
-// For now, we use a lightweight approach with a settings KV store
-
 interface CategorySettings {
   ticketCategories: string[];
   knowledgeCategories: string[];
@@ -55,25 +52,24 @@ const DEFAULT_CATEGORIES: CategorySettings = {
   ],
 };
 
-// We store categories in the EmailSyncState table reusing a row, or
-// more cleanly, we'll use a simple file-based approach via a "settings" concept.
-// For simplicity, use Prisma's raw JSON field approach.
-// Since we don't have a Settings model, let's add one conceptually via
-// a JSON string stored per-key.
+const SETTINGS_KEY = "categories";
 
-// Actually, the cleanest approach: store as a JSON blob in a text field.
-// We'll create a lightweight in-memory + file store.
-// For MVP: return defaults and allow overrides stored in a global variable
-// that persists per-process (will reset on restart, but works for demo).
-
-let categoryOverrides: Partial<CategorySettings> | null = null;
+async function loadCategories(): Promise<CategorySettings> {
+  try {
+    const row = await prisma.settings.findUnique({ where: { key: SETTINGS_KEY } });
+    if (row) {
+      const saved = JSON.parse(row.value) as Partial<CategorySettings>;
+      return { ...DEFAULT_CATEGORIES, ...saved };
+    }
+  } catch {
+    // Fall back to defaults on error
+  }
+  return DEFAULT_CATEGORIES;
+}
 
 export async function GET() {
   try {
-    const categories = {
-      ...DEFAULT_CATEGORIES,
-      ...categoryOverrides,
-    };
+    const categories = await loadCategories();
     return NextResponse.json(categories);
   } catch (error) {
     console.error("Categories fetch error:", error);
@@ -102,18 +98,21 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { ticketCategories, knowledgeCategories, assetTypes, changeTypes } = body;
 
-    categoryOverrides = {
+    const overrides: Partial<CategorySettings> = {
       ...(ticketCategories && { ticketCategories }),
       ...(knowledgeCategories && { knowledgeCategories }),
       ...(assetTypes && { assetTypes }),
       ...(changeTypes && { changeTypes }),
     };
 
-    const categories = {
-      ...DEFAULT_CATEGORIES,
-      ...categoryOverrides,
-    };
+    // Persist to database
+    await prisma.settings.upsert({
+      where: { key: SETTINGS_KEY },
+      update: { value: JSON.stringify(overrides) },
+      create: { key: SETTINGS_KEY, value: JSON.stringify(overrides) },
+    });
 
+    const categories = { ...DEFAULT_CATEGORIES, ...overrides };
     return NextResponse.json(categories);
   } catch (error) {
     console.error("Categories update error:", error);

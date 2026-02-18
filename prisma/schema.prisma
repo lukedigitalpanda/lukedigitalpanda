@@ -121,11 +121,12 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contacts       ClientContact[]
-  tickets        Ticket[]
-  assets         Asset[]
-  changeRequests ChangeRequest[]
-  users          User[]          @relation("ClientUsers")
+  contacts          ClientContact[]
+  tickets           Ticket[]
+  assets            Asset[]
+  changeRequests    ChangeRequest[]
+  users             User[]             @relation("ClientUsers")
+  knowledgeArticles KnowledgeArticle[]
 
   @@map("clients")
 }
@@ -463,12 +464,17 @@ model KnowledgeArticle {
   isPublic  Boolean  @default(false)
   authorId  String
 
+  // Optional client assignment (visible only to that client's portal)
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   author User @relation(fields: [authorId], references: [id])
 
   @@index([category])
+  @@index([clientId])
   @@map("knowledge_articles")
 }
 
@@ -487,4 +493,16 @@ model EmailSyncState {
   updatedAt DateTime @updatedAt
 
   @@map("email_sync_state")
+}
+
+// ============================================================================
+// APP SETTINGS (key-value store for categories, SLA config, etc.)
+// ============================================================================
+
+model Settings {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
 }

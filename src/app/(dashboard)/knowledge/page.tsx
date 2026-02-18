@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Search, BookOpen } from "lucide-react";
+import { Plus, Search, BookOpen, Image as ImageIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,9 +37,16 @@ interface KnowledgeArticle {
   category: string | null;
   tags: string[];
   isPublic: boolean;
+  clientId: string | null;
+  client?: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
-  author: { id: string; name: string };
+  author: { name: string };
+}
+
+interface ClientOption {
+  id: string;
+  name: string;
 }
 
 interface NewArticleForm {
@@ -48,6 +55,7 @@ interface NewArticleForm {
   content: string;
   tags: string;
   isPublic: boolean;
+  clientId: string;
 }
 
 const emptyForm: NewArticleForm = {
@@ -56,16 +64,8 @@ const emptyForm: NewArticleForm = {
   content: "",
   tags: "",
   isPublic: false,
+  clientId: "",
 };
-
-const CATEGORIES = [
-  "Network",
-  "Hardware",
-  "Software",
-  "Security",
-  "General",
-  "How-To",
-];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,6 +79,11 @@ function getCategoryColor(category: string | null): string {
     Security: "bg-red-100 text-red-800",
     General: "bg-gray-100 text-gray-800",
     "How-To": "bg-yellow-100 text-yellow-800",
+    Email: "bg-indigo-100 text-indigo-800",
+    Backup: "bg-teal-100 text-teal-800",
+    Printing: "bg-pink-100 text-pink-800",
+    "Account/Access": "bg-orange-100 text-orange-800",
+    Policy: "bg-slate-100 text-slate-800",
   };
   return colors[category || ""] || "bg-gray-100 text-gray-800";
 }
@@ -117,6 +122,12 @@ export default function KnowledgeBasePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Categories from settings API
+  const [categories, setCategories] = useState<string[]>([]);
+
+  // Client options for assignment
+  const [clients, setClients] = useState<ClientOption[]>([]);
+
   // Search
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -130,6 +141,39 @@ export default function KnowledgeBasePage() {
   const [form, setForm] = useState<NewArticleForm>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
+  // Load categories from settings API
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const res = await fetch("/api/settings/categories");
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(data.knowledgeCategories || []);
+        }
+      } catch {
+        // Use empty array; form will still work
+      }
+    }
+    loadCategories();
+  }, []);
+
+  // Load clients for assignment dropdown
+  useEffect(() => {
+    async function loadClients() {
+      try {
+        const res = await fetch("/api/clients?limit=100");
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : data.clients ?? data.data ?? [];
+          setClients(list.map((c: any) => ({ id: c.id, name: c.name })));
+        }
+      } catch {
+        // Clients dropdown will just be empty
+      }
+    }
+    loadClients();
+  }, []);
+
   async function fetchArticles() {
     try {
       setLoading(true);
@@ -137,7 +181,7 @@ export default function KnowledgeBasePage() {
       const res = await fetch("/api/knowledge");
       if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
       const json = await res.json();
-      const list = Array.isArray(json) ? json : json.data ?? [];
+      const list = Array.isArray(json) ? json : json.articles ?? json.data ?? [];
       setArticles(list);
     } catch (err) {
       console.error("Knowledge base fetch error:", err);
@@ -160,6 +204,25 @@ export default function KnowledgeBasePage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  // Insert image as base64 data URL into content
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be under 5MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const imageMarkdown = `\n![${file.name}](${dataUrl})\n`;
+      updateField("content", form.content + imageMarkdown);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -173,6 +236,7 @@ export default function KnowledgeBasePage() {
           .map((t) => t.trim())
           .filter(Boolean),
         isPublic: form.isPublic,
+        clientId: form.clientId || null,
       };
 
       const res = await fetch("/api/knowledge", {
@@ -224,7 +288,7 @@ export default function KnowledgeBasePage() {
               New Article
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>New Knowledge Article</DialogTitle>
               <DialogDescription>
@@ -253,7 +317,10 @@ export default function KnowledgeBasePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {CATEGORIES.map((c) => (
+                    {(categories.length > 0
+                      ? categories
+                      : ["Network", "Hardware", "Software", "Security", "General", "How-To"]
+                    ).map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>
@@ -263,10 +330,24 @@ export default function KnowledgeBasePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="new-content">Content *</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="new-content">Content *</Label>
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageUpload}
+                    />
+                    <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                      <ImageIcon className="h-3.5 w-3.5" />
+                      Add Image
+                    </span>
+                  </label>
+                </div>
                 <Textarea
                   id="new-content"
-                  placeholder="Article content..."
+                  placeholder="Article content... (supports markdown with images)"
                   rows={10}
                   value={form.content}
                   onChange={(e) => updateField("content", e.target.value)}
@@ -284,6 +365,29 @@ export default function KnowledgeBasePage() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label>Assign to Client (optional)</Label>
+                <Select
+                  value={form.clientId || "none"}
+                  onValueChange={(v) => updateField("clientId", v === "none" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No client (internal)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No client (internal)</SelectItem>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Assigned articles appear only in that client&apos;s portal.
+                </p>
+              </div>
+
               <div className="flex items-center gap-2">
                 <input
                   id="new-public"
@@ -293,7 +397,7 @@ export default function KnowledgeBasePage() {
                   className="h-4 w-4 rounded border-gray-300"
                 />
                 <Label htmlFor="new-public" className="cursor-pointer">
-                  Make publicly visible
+                  Make publicly visible (all client portals)
                 </Label>
               </div>
 
@@ -382,7 +486,7 @@ export default function KnowledgeBasePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     className={getCategoryColor(article.category)}
                     variant="secondary"
@@ -394,9 +498,14 @@ export default function KnowledgeBasePage() {
                       Public
                     </Badge>
                   )}
+                  {article.client && (
+                    <Badge variant="outline" className="text-xs">
+                      {article.client.name}
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {truncate(article.content, 150)}
+                  {truncate(article.content.replace(/!\[.*?\]\(data:.*?\)/g, "[image]"), 150)}
                 </p>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{article.author.name}</span>
@@ -416,13 +525,19 @@ export default function KnowledgeBasePage() {
               <DialogHeader>
                 <DialogTitle>{selectedArticle.title}</DialogTitle>
                 <DialogDescription>
-                  <span className="flex items-center gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
                     <Badge
                       className={getCategoryColor(selectedArticle.category)}
                       variant="secondary"
                     >
                       {selectedArticle.category || "Uncategorized"}
                     </Badge>
+                    {selectedArticle.isPublic && (
+                      <Badge variant="outline" className="text-xs">Public</Badge>
+                    )}
+                    {selectedArticle.client && (
+                      <Badge variant="outline" className="text-xs">{selectedArticle.client.name}</Badge>
+                    )}
                     <span>by {selectedArticle.author.name}</span>
                     <span className="text-muted-foreground">
                       {formatRelativeTime(selectedArticle.updatedAt)}
@@ -430,8 +545,23 @@ export default function KnowledgeBasePage() {
                   </span>
                 </DialogDescription>
               </DialogHeader>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                {selectedArticle.content}
+              <div className="prose prose-sm max-w-none">
+                {selectedArticle.content.split("\n").map((line, i) => {
+                  const imgMatch = line.match(/!\[(.*?)\]\((data:image\/[^)]+)\)/);
+                  if (imgMatch) {
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={i}
+                        src={imgMatch[2]}
+                        alt={imgMatch[1]}
+                        className="max-w-full rounded-lg border my-2"
+                      />
+                    );
+                  }
+                  if (!line.trim()) return <br key={i} />;
+                  return <p key={i} className="whitespace-pre-wrap my-1">{line}</p>;
+                })}
               </div>
               {selectedArticle.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 border-t pt-4">

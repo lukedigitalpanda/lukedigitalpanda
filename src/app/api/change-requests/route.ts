@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1", 10);
-    const limit = parseInt(searchParams.get("limit") || "20", 10);
+    const limit = parseInt(searchParams.get("pageSize") || searchParams.get("limit") || "20", 10);
     const status = searchParams.get("status") as ChangeRequestStatus | null;
     const type = searchParams.get("type") as ChangeType | null;
     const clientId = searchParams.get("clientId");
@@ -81,13 +81,11 @@ export async function GET(request: NextRequest) {
     ]);
 
     return NextResponse.json({
-      changeRequests,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      data: changeRequests,
+      page,
+      pageSize: limit,
+      total,
+      totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
     console.error("Error fetching change requests:", error);

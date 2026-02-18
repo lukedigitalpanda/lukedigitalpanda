@@ -6,7 +6,7 @@ import { calculateSLADeadline } from "@/lib/utils";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, phone, subject, description, priority, clientId } = body;
+    const { name, email, phone, subject, description, priority, clientId, contactId } = body;
 
     if (!name || !email || !subject || !description) {
       return NextResponse.json(
@@ -15,11 +15,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Try to find an existing contact by email
-    let contact = await prisma.clientContact.findFirst({
-      where: { email: email.toLowerCase() },
-      include: { client: true },
-    });
+    // If contactId provided (logged-in portal user), use it directly
+    let contact = contactId
+      ? await prisma.clientContact.findUnique({
+          where: { id: contactId },
+          include: { client: true },
+        })
+      : await prisma.clientContact.findFirst({
+          where: { email: email.toLowerCase() },
+          include: { client: true },
+        });
 
     let resolvedClientId = clientId;
 

@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
         take: limit,
         include: {
           author: { select: { name: true, image: true } },
+          client: { select: { id: true, name: true } },
         },
       }),
       prisma.knowledgeArticle.count({ where }),
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, content, category, tags, isPublic } = body;
+    const { title, content, category, tags, isPublic, clientId } = body;
 
     if (!title || !content) {
       return NextResponse.json(
@@ -82,10 +83,12 @@ export async function POST(request: NextRequest) {
         category: category || null,
         tags: tags || [],
         isPublic: isPublic || false,
+        clientId: clientId || null,
         authorId,
       },
       include: {
         author: { select: { name: true, image: true } },
+        client: { select: { id: true, name: true } },
       },
     });
 
