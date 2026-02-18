@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   LayoutDashboard,
   Ticket,
@@ -115,6 +116,9 @@ export default function DashboardLayout({
     { id: string; message: string; time: string; read: boolean; href: string }[]
   >([]);
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const userName = session?.user?.name || "User";
+  const userEmail = session?.user?.email || "";
 
   useEffect(() => {
     async function fetchNotifications() {
@@ -316,10 +320,10 @@ export default function DashboardLayout({
                   <div className="absolute right-0 z-50 mt-2 w-56 rounded-md border bg-white py-1 shadow-lg">
                     <div className="border-b px-4 py-3">
                       <p className="text-sm font-medium text-slate-900">
-                        Admin User
+                        {userName}
                       </p>
                       <p className="text-xs text-slate-500">
-                        admin@servicedesk.com
+                        {userEmail}
                       </p>
                     </div>
                     <Link

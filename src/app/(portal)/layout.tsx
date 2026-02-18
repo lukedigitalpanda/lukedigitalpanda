@@ -2,8 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import Image from "next/image";
-import { LogIn, LogOut, Headphones } from "lucide-react";
+import { LogIn, LogOut, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PortalProvider, usePortal } from "@/lib/portal-context";
 
@@ -15,18 +14,17 @@ function PortalHeader() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link href="/portal" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-            {/* Show company logo if logged in and logo exists, otherwise show default */}
-            {isLoggedIn && client?.logoUrl ? (
-              <img
-                src={client.logoUrl}
-                alt={client.name}
-                className="h-10 w-auto max-w-[180px] object-contain"
-              />
-            ) : (
+            {/* Always show Digital Panda branding as the portal logo */}
+            <Monitor className="h-7 w-7 text-blue-600" />
+            <span className="text-lg font-bold tracking-tight text-slate-900">
+              Digital Panda
+            </span>
+            {/* Show company name alongside when logged in */}
+            {isLoggedIn && client?.name && (
               <>
-                <Headphones className="h-7 w-7 text-blue-600" />
-                <span className="text-lg font-bold tracking-tight text-slate-900">
-                  Support Portal
+                <span className="text-slate-300 hidden sm:inline">|</span>
+                <span className="text-sm font-medium text-slate-500 hidden sm:inline">
+                  {client.name}
                 </span>
               </>
             )}
