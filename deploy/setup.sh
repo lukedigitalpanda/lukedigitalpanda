@@ -211,7 +211,7 @@ echo "Waiting for services to start..."
 sleep 10
 
 # Get SSL certificate
-docker compose run --rm certbot certonly \
+docker compose run --rm --entrypoint "certbot" certbot certonly \
   --webroot \
   --webroot-path /var/www/certbot \
   --email "$EMAIL" \

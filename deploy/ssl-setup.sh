@@ -65,7 +65,7 @@ echo "  Domain: ${DOMAIN}"
 echo "  Email:  ${EMAIL}"
 echo ""
 
-docker compose run --rm certbot certonly \
+docker compose run --rm --entrypoint "certbot" certbot certonly \
   --webroot \
   --webroot-path /var/www/certbot \
   --email "$EMAIL" \
