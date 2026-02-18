@@ -3,26 +3,33 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { LogIn, LogOut } from "lucide-react";
+import { LogIn, LogOut, Headphones } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PortalProvider, usePortal } from "@/lib/portal-context";
 
 function PortalHeader() {
-  const { isLoggedIn, contact, logout } = usePortal();
+  const { isLoggedIn, contact, client, logout } = usePortal();
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link href="/portal" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-            <Image
-              src="/logo.png"
-              alt="Digital Panda"
-              width={180}
-              height={78}
-              className="h-10 w-auto"
-              priority
-            />
+            {/* Show company logo if logged in and logo exists, otherwise show default */}
+            {isLoggedIn && client?.logoUrl ? (
+              <img
+                src={client.logoUrl}
+                alt={client.name}
+                className="h-10 w-auto max-w-[180px] object-contain"
+              />
+            ) : (
+              <>
+                <Headphones className="h-7 w-7 text-blue-600" />
+                <span className="text-lg font-bold tracking-tight text-slate-900">
+                  Support Portal
+                </span>
+              </>
+            )}
           </Link>
 
           <div className="flex items-center gap-3">

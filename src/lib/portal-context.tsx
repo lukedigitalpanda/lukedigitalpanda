@@ -14,6 +14,7 @@ export interface PortalClient {
   name: string;
   slaLevel?: string;
   contractType?: string;
+  logoUrl?: string | null;
 }
 
 export interface PortalSession {

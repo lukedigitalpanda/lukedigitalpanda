@@ -20,6 +20,21 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { usePortal } from "@/lib/portal-context";
 
+// ---------------------------------------------------------------------------
+// Time-based greeting
+// ---------------------------------------------------------------------------
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+// ---------------------------------------------------------------------------
+// Tile definitions
+// ---------------------------------------------------------------------------
+
 interface TileItem {
   label: string;
   description: string;
@@ -112,17 +127,39 @@ export default function PortalDashboardPage() {
   if (!isLoggedIn) return null;
 
   const visibleTiles = tiles.filter((t) => !t.adminOnly || role === "admin");
+  const firstName = contact?.name?.split(" ")[0] || "there";
+  const greeting = getGreeting();
 
   return (
     <div className="space-y-6">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Welcome back, {contact?.name?.split(" ")[0] || "there"}
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {client?.name} &middot; {role === "admin" ? "Organisation Admin" : "Portal User"}
-        </p>
+      {/* Welcome Banner with Company Logo */}
+      <div className="rounded-xl bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-8 text-white shadow-lg">
+        <div className="flex items-center justify-between gap-6">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-bold sm:text-3xl">
+              {greeting}, {firstName}
+            </h1>
+            <p className="mt-2 text-blue-100">
+              {client?.name} &middot; {role === "admin" ? "Organisation Admin" : "Portal User"}
+            </p>
+            <p className="mt-1 text-sm text-blue-200">
+              How can we help you today?
+            </p>
+          </div>
+
+          {/* Company Logo */}
+          {client?.logoUrl && (
+            <div className="hidden shrink-0 sm:block">
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl bg-white p-2 shadow-inner">
+                <img
+                  src={client.logoUrl}
+                  alt={`${client.name} logo`}
+                  className="h-full w-full object-contain"
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tiles Grid */}

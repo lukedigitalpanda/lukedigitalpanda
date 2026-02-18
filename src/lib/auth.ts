@@ -37,6 +37,11 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
+          include: {
+            client: {
+              select: { id: true, name: true, logoUrl: true },
+            },
+          },
         });
 
         if (!user || !user.isActive) {
@@ -62,6 +67,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           role: user.role,
           image: user.image,
+          clientId: user.clientId || undefined,
         };
       },
     }),
@@ -71,6 +77,19 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role;
+        token.clientId = (user as any).clientId;
+
+        // Fetch client details for CLIENT_USER
+        if ((user as any).clientId) {
+          const client = await prisma.client.findUnique({
+            where: { id: (user as any).clientId },
+            select: { name: true, logoUrl: true },
+          });
+          if (client) {
+            token.clientName = client.name;
+            token.clientLogoUrl = client.logoUrl || undefined;
+          }
+        }
       }
       return token;
     },
@@ -78,6 +97,9 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
+        (session.user as any).clientId = token.clientId;
+        (session.user as any).clientName = token.clientName;
+        (session.user as any).clientLogoUrl = token.clientLogoUrl;
       }
       return session;
     },

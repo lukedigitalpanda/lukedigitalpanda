@@ -11,6 +11,9 @@ import {
   Clock,
   Sparkles,
   Plus,
+  Building2,
+  Upload,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +47,17 @@ interface UserEntry {
   role: string;
   jobTitle?: string;
   isActive: boolean;
+  clientId?: string;
+  client?: {
+    id: string;
+    name: string;
+  };
+}
+
+interface ClientEntry {
+  id: string;
+  name: string;
+  logoUrl?: string | null;
 }
 
 interface SLAMatrix {
@@ -69,9 +83,19 @@ function getRoleColor(role: string): string {
     ADMIN: "bg-purple-100 text-purple-800",
     MANAGER: "bg-blue-100 text-blue-800",
     TECHNICIAN: "bg-green-100 text-green-800",
-    CLIENT_USER: "bg-gray-100 text-gray-800",
+    CLIENT_USER: "bg-orange-100 text-orange-800",
   };
   return colors[role] || "bg-gray-100 text-gray-800";
+}
+
+function getRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
+    ADMIN: "Admin",
+    MANAGER: "Manager",
+    TECHNICIAN: "Technician",
+    CLIENT_USER: "Client Portal User",
+  };
+  return labels[role] || role;
 }
 
 const defaultSLA: SLAMatrix = {
@@ -208,12 +232,14 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<UserEntry[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [clients, setClients] = useState<ClientEntry[]>([]);
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
     password: "",
     role: "TECHNICIAN",
     jobTitle: "",
+    clientId: "",
   });
   const [createUserError, setCreateUserError] = useState<string | null>(null);
   const [creatingUser, setCreatingUser] = useState(false);
@@ -326,11 +352,19 @@ export default function SettingsPage() {
     async function fetchUsers() {
       try {
         setUsersLoading(true);
-        const res = await fetch("/api/users");
-        if (res.ok) {
-          const json = await res.json();
+        const [usersRes, clientsRes] = await Promise.all([
+          fetch("/api/users"),
+          fetch("/api/clients?limit=100"),
+        ]);
+        if (usersRes.ok) {
+          const json = await usersRes.json();
           const list = Array.isArray(json) ? json : json.data ?? [];
           setUsers(list);
+        }
+        if (clientsRes.ok) {
+          const json = await clientsRes.json();
+          const clientList = json.clients || (Array.isArray(json) ? json : []);
+          setClients(clientList);
         }
       } catch {
         // silently handle
@@ -348,12 +382,26 @@ export default function SettingsPage() {
       setCreateUserError("Name, email, and password are required.");
       return;
     }
+    if (newUser.role === "CLIENT_USER" && !newUser.clientId) {
+      setCreateUserError("Please select a client company for this portal user.");
+      return;
+    }
     try {
       setCreatingUser(true);
+      const payload: any = {
+        name: newUser.name,
+        email: newUser.email,
+        password: newUser.password,
+        role: newUser.role,
+        jobTitle: newUser.jobTitle || undefined,
+      };
+      if (newUser.role === "CLIENT_USER" && newUser.clientId) {
+        payload.clientId = newUser.clientId;
+      }
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -368,6 +416,7 @@ export default function SettingsPage() {
         password: "",
         role: "TECHNICIAN",
         jobTitle: "",
+        clientId: "",
       });
     } catch (err) {
       setCreateUserError(
@@ -652,7 +701,7 @@ export default function SettingsPage() {
                             <Select
                               value={newUser.role}
                               onValueChange={(val) =>
-                                setNewUser({ ...newUser, role: val })
+                                setNewUser({ ...newUser, role: val, clientId: "" })
                               }
                             >
                               <SelectTrigger>
@@ -664,13 +713,50 @@ export default function SettingsPage() {
                                 <SelectItem value="TECHNICIAN">
                                   Technician
                                 </SelectItem>
+                                <SelectItem value="CLIENT_USER">
+                                  Client Portal User
+                                </SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
+
+                          {/* Client selector - shown only for CLIENT_USER role */}
+                          {newUser.role === "CLIENT_USER" && (
+                            <div className="space-y-2">
+                              <Label>
+                                Client Company
+                                <span className="text-red-500 ml-1">*</span>
+                              </Label>
+                              <Select
+                                value={newUser.clientId}
+                                onValueChange={(val) =>
+                                  setNewUser({ ...newUser, clientId: val })
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select a client..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {clients.map((client) => (
+                                    <SelectItem key={client.id} value={client.id}>
+                                      <span className="flex items-center gap-2">
+                                        <Building2 className="h-3 w-3 text-muted-foreground" />
+                                        {client.name}
+                                      </span>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-muted-foreground">
+                                This user will be able to log in to the self-service portal and see tickets for this company.
+                              </p>
+                            </div>
+                          )}
+
                           <div className="space-y-2">
                             <Label>Job Title (optional)</Label>
                             <Input
-                              placeholder="e.g. Senior Engineer"
+                              placeholder="e.g. IT Director"
                               value={newUser.jobTitle}
                               onChange={(e) =>
                                 setNewUser({
@@ -720,6 +806,7 @@ export default function SettingsPage() {
                           <th className="pb-3 pr-4">Name</th>
                           <th className="pb-3 pr-4">Email</th>
                           <th className="pb-3 pr-4">Role</th>
+                          <th className="pb-3 pr-4">Company</th>
                           <th className="pb-3">Status</th>
                         </tr>
                       </thead>
@@ -737,8 +824,18 @@ export default function SettingsPage() {
                                 className={getRoleColor(user.role)}
                                 variant="secondary"
                               >
-                                {user.role}
+                                {getRoleLabel(user.role)}
                               </Badge>
+                            </td>
+                            <td className="py-3 pr-4 text-muted-foreground">
+                              {user.client ? (
+                                <span className="flex items-center gap-1.5">
+                                  <Building2 className="h-3 w-3" />
+                                  {user.client.name}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">-</span>
+                              )}
                             </td>
                             <td className="py-3">
                               {user.isActive ? (

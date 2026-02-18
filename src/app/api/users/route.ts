@@ -28,6 +28,13 @@ export async function GET(request: NextRequest) {
         jobTitle: true,
         isActive: true,
         image: true,
+        clientId: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         createdAt: true,
       },
       orderBy: { name: "asc" },
@@ -56,13 +63,32 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email, password, role, jobTitle } = body;
+    const { name, email, password, role, jobTitle, clientId } = body;
 
     if (!name || !email || !password) {
       return NextResponse.json(
         { error: "Name, email, and password are required" },
         { status: 400 }
       );
+    }
+
+    // CLIENT_USER must be associated with a client
+    if (role === "CLIENT_USER" && !clientId) {
+      return NextResponse.json(
+        { error: "Client user must be associated with a client company" },
+        { status: 400 }
+      );
+    }
+
+    // Verify the client exists if clientId is provided
+    if (clientId) {
+      const client = await prisma.client.findUnique({ where: { id: clientId } });
+      if (!client) {
+        return NextResponse.json(
+          { error: "The selected client company does not exist" },
+          { status: 400 }
+        );
+      }
     }
 
     const existing = await prisma.user.findUnique({ where: { email } });
@@ -80,6 +106,7 @@ export async function POST(request: NextRequest) {
         passwordHash: password, // TODO: bcrypt hash in production
         role: role || "TECHNICIAN",
         jobTitle: jobTitle || null,
+        clientId: role === "CLIENT_USER" ? clientId : null,
       },
       select: {
         id: true,
@@ -88,6 +115,13 @@ export async function POST(request: NextRequest) {
         role: true,
         jobTitle: true,
         isActive: true,
+        clientId: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         createdAt: true,
       },
     });

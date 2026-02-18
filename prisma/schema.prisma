@@ -23,6 +23,10 @@ model User {
   phone         String?
   jobTitle      String?
 
+  // Client association (for CLIENT_USER role)
+  clientId String?
+  client   Client? @relation("ClientUsers", fields: [clientId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -46,6 +50,7 @@ model User {
   // Knowledge base
   knowledgeArticles KnowledgeArticle[]
 
+  @@index([clientId])
   @@map("users")
 }
 
@@ -111,6 +116,7 @@ model Client {
   isActive     Boolean @default(true)
   contractType String? // e.g., "Managed", "Break-Fix", "Project"
   slaLevel     String? // e.g., "Gold", "Silver", "Bronze"
+  logoUrl      String? @db.Text // Base64 data URL or external URL for company logo
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -119,6 +125,7 @@ model Client {
   tickets        Ticket[]
   assets         Asset[]
   changeRequests ChangeRequest[]
+  users          User[]          @relation("ClientUsers")
 
   @@map("clients")
 }

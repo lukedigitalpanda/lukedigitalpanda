@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, LogIn, Building2 } from "lucide-react";
+import { ArrowLeft, LogIn, Building2, Eye, EyeOff } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,9 @@ export default function PortalLoginPage() {
   const { login } = usePortal();
 
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [requiresPassword, setRequiresPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,16 +27,27 @@ export default function PortalLoginPage() {
     setError(null);
 
     try {
+      const payload: any = { email: email.trim().toLowerCase() };
+      if (password) {
+        payload.password = password;
+      }
+
       const res = await fetch("/api/portal/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Login failed. Please check your email address.");
+        // If the API tells us password is required, show the password field
+        if (data.requiresPassword) {
+          setRequiresPassword(true);
+          setError("This account requires a password. Please enter your password below.");
+          return;
+        }
+        throw new Error(data.error || "Login failed. Please check your credentials.");
       }
 
       login({
@@ -79,12 +93,49 @@ export default function PortalLoginPage() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  // Reset password requirement when email changes
+                  if (requiresPassword) {
+                    setRequiresPassword(false);
+                    setPassword("");
+                    setError(null);
+                  }
+                }}
                 placeholder="you@company.com"
                 required
                 autoFocus
               />
             </div>
+
+            {/* Password field - shown for CLIENT_USER accounts */}
+            {requiresPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {error && (
               <div className="rounded-md bg-red-50 border border-red-200 p-3">

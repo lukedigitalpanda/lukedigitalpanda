@@ -52,7 +52,14 @@ export default function LoginPage() {
       if (result?.error) {
         setError("Invalid email or password. Please try again.");
       } else {
-        router.push("/dashboard");
+        // Check if user is a CLIENT_USER and redirect to portal instead
+        const sessionRes = await fetch("/api/auth/session");
+        const session = await sessionRes.json();
+        if (session?.user?.role === "CLIENT_USER") {
+          router.push("/portal/dashboard");
+        } else {
+          router.push("/dashboard");
+        }
         router.refresh();
       }
     } catch {
