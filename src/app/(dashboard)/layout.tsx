@@ -160,7 +160,7 @@ export default function DashboardLayout({
             <Monitor className="h-6 w-6 shrink-0 text-blue-400" />
             {!collapsed && (
               <span className="text-lg font-bold tracking-tight">
-                ServiceDesk
+                Digital Panda
               </span>
             )}
           </Link>

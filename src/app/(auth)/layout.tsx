@@ -10,7 +10,7 @@ export default function AuthLayout({
       <div className="mb-8 flex items-center gap-2">
         <Monitor className="h-8 w-8 text-blue-600" />
         <span className="text-2xl font-bold tracking-tight text-slate-900">
-          ServiceDesk
+          Digital Panda
         </span>
       </div>
       <div className="w-full max-w-md">{children}</div>
