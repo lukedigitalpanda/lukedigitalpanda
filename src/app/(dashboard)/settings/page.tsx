@@ -216,6 +216,7 @@ export default function SettingsPage() {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesSaving, setCategoriesSaving] = useState(false);
   const [categoriesSaved, setCategoriesSaved] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
 
   // ---- Email tab state ----
   const [emailConnected, setEmailConnected] = useState(false);
@@ -267,6 +268,7 @@ export default function SettingsPage() {
     if (!categories) return;
     try {
       setCategoriesSaving(true);
+      setCategoriesError(null);
       const res = await fetch("/api/settings/categories", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -277,9 +279,13 @@ export default function SettingsPage() {
         setCategories(data);
         setCategoriesSaved(true);
         setTimeout(() => setCategoriesSaved(false), 3000);
+      } else {
+        const errData = await res.json().catch(() => null);
+        setCategoriesError(errData?.error || `Save failed (${res.status})`);
       }
     } catch (err) {
       console.error("Save categories error:", err);
+      setCategoriesError("Network error - failed to save categories");
     } finally {
       setCategoriesSaving(false);
     }
@@ -536,15 +542,22 @@ export default function SettingsPage() {
                 }
               />
 
-              <div className="flex items-center gap-3">
-                <Button onClick={saveCategories} disabled={categoriesSaving}>
-                  {categoriesSaving ? "Saving..." : "Save All Categories"}
-                </Button>
-                {categoriesSaved && (
-                  <span className="flex items-center gap-1 text-sm text-green-600">
-                    <Check className="h-4 w-4" />
-                    Saved successfully
-                  </span>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <Button onClick={saveCategories} disabled={categoriesSaving}>
+                    {categoriesSaving ? "Saving..." : "Save All Categories"}
+                  </Button>
+                  {categoriesSaved && (
+                    <span className="flex items-center gap-1 text-sm text-green-600">
+                      <Check className="h-4 w-4" />
+                      Saved successfully
+                    </span>
+                  )}
+                </div>
+                {categoriesError && (
+                  <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {categoriesError}
+                  </div>
                 )}
               </div>
             </div>

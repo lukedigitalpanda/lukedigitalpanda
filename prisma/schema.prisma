@@ -496,6 +496,29 @@ model EmailSyncState {
 }
 
 // ============================================================================
+// AUDIT LOG (system-wide event tracking)
+// ============================================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // e.g., "ticket_deleted", "client_deactivated", "user_created"
+  entityType String   // e.g., "Ticket", "Client", "User"
+  entityId   String?  // ID of the affected entity
+  details    String   @db.Text // Human-readable description
+  metadata   String?  @db.Text // Optional JSON with extra data (old values, etc.)
+  userId     String
+  userName   String   // Denormalized so it persists even if user is deleted
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType])
+  @@index([action])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================================
 // APP SETTINGS (key-value store for categories, SLA config, etc.)
 // ============================================================================
 
