@@ -56,6 +56,7 @@ export default function NewTicketPage() {
   const [clientId, setClientId] = useState("");
   const [priority, setPriority] = useState("MEDIUM");
   const [category, setCategory] = useState("");
+  const [source, setSource] = useState("PORTAL");
   const [assigneeId, setAssigneeId] = useState("");
 
   // Data lists
@@ -166,6 +167,7 @@ export default function NewTicketPage() {
         clientId,
         priority,
         category,
+        source,
       };
       if (assigneeId && assigneeId !== "none") body.assigneeId = assigneeId;
 
@@ -297,6 +299,24 @@ export default function NewTicketPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Source */}
+            <div className="space-y-2">
+              <Label htmlFor="source">Source</Label>
+              <Select value={source} onValueChange={setSource}>
+                <SelectTrigger id="source">
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PORTAL">Portal</SelectItem>
+                  <SelectItem value="EMAIL">Email</SelectItem>
+                  <SelectItem value="TASKBAR">Taskbar</SelectItem>
+                  <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
+                  <SelectItem value="TEAMS">Teams</SelectItem>
+                  <SelectItem value="PHONE">Phone</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* AI Classify */}

@@ -302,6 +302,9 @@ enum TicketSource {
   EMAIL
   PORTAL
   PHONE
+  TASKBAR
+  WHATSAPP
+  TEAMS
   API
 }
 
