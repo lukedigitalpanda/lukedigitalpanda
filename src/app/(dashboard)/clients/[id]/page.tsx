@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -13,11 +13,21 @@ import {
   Mail,
   Phone,
   Star,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   cn,
   getStatusColor,
@@ -183,11 +193,14 @@ function DetailSkeleton() {
 
 export default function ClientDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const clientId = params.id as string;
 
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function fetchClient() {
@@ -213,6 +226,22 @@ export default function ClientDetailPage() {
       fetchClient();
     }
   }, [clientId]);
+
+  async function handleDeleteClient() {
+    try {
+      setDeleting(true);
+      const res = await fetch(`/api/clients/${clientId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to delete client");
+      }
+      router.push("/clients");
+    } catch (err) {
+      console.error("Delete client error:", err);
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+    }
+  }
 
   // ---- Loading state -------------------------------------------------------
   if (loading) {
@@ -303,8 +332,49 @@ export default function ClientDetailPage() {
             </div>
           </div>
         </div>
-        <Button variant="outline">Edit Client</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline">Edit Client</Button>
+          <Button
+            variant="outline"
+            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Remove
+          </Button>
+        </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Remove Client
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove <strong>{client.name}</strong>? This will deactivate the client and they will no longer appear in active views. Their tickets and data will be preserved.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteClient}
+              disabled={deleting}
+            >
+              {deleting ? "Removing..." : "Remove Client"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">

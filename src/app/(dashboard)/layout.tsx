@@ -20,6 +20,9 @@ import {
   ChevronRight,
   LogOut,
   User,
+  CheckCheck,
+  X,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +46,7 @@ const operationsNavItems: NavItem[] = [
 
 const reportsNavItems: NavItem[] = [
   { label: "Reports", href: "/reports", icon: BarChart3 },
+  { label: "Audit Log", href: "/audit-log", icon: ClipboardList },
 ];
 
 function SidebarLink({
@@ -115,15 +119,45 @@ export default function DashboardLayout({
   const [notifications, setNotifications] = useState<
     { id: string; message: string; time: string; read: boolean; href: string }[]
   >([]);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const pathname = usePathname();
   const { data: session } = useSession();
   const userName = session?.user?.name || "User";
   const userEmail = session?.user?.email || "";
 
+  // Load read notification IDs from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("dp_read_notifications");
+      if (stored) setReadIds(new Set(JSON.parse(stored)));
+    } catch {}
+  }, []);
+
+  // Persist read IDs to localStorage
+  function persistReadIds(ids: Set<string>) {
+    setReadIds(ids);
+    try {
+      localStorage.setItem("dp_read_notifications", JSON.stringify([...ids]));
+    } catch {}
+  }
+
+  function formatTimeAgo(dateStr: string): string {
+    const now = Date.now();
+    const diff = now - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString();
+  }
+
   useEffect(() => {
     async function fetchNotifications() {
       try {
-        const res = await fetch("/api/tickets?page=1&limit=5&sort=createdAt&order=desc");
+        const res = await fetch("/api/tickets?page=1&limit=10&sort=createdAt&order=desc");
         if (!res.ok) return;
         const data = await res.json();
         const tickets = Array.isArray(data) ? data : data.tickets || [];
@@ -131,8 +165,8 @@ export default function DashboardLayout({
           tickets.map((t: any) => ({
             id: t.id,
             message: `Ticket #${t.number}: ${t.subject}`,
-            time: new Date(t.createdAt).toLocaleDateString(),
-            read: ["RESOLVED", "CLOSED"].includes(t.status),
+            time: t.createdAt,
+            read: readIds.has(t.id) || ["RESOLVED", "CLOSED"].includes(t.status),
             href: `/tickets/${t.id}`,
           }))
         );
@@ -141,9 +175,24 @@ export default function DashboardLayout({
       }
     }
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 60000);
+    const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [readIds]);
+
+  function markAllRead() {
+    const newIds = new Set(readIds);
+    notifications.forEach((n) => newIds.add(n.id));
+    persistReadIds(newIds);
+  }
+
+  function clearNotifications() {
+    markAllRead();
+    setNotificationsOpen(false);
+  }
+
+  const unreadCount = notifications.filter(
+    (n) => !n.read && !readIds.has(n.id)
+  ).length;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -240,9 +289,9 @@ export default function DashboardLayout({
                 aria-label="Notifications"
               >
                 <Bell className="h-5 w-5" />
-                {notifications.filter((n) => !n.read).length > 0 && (
+                {unreadCount > 0 && (
                   <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                    {notifications.filter((n) => !n.read).length}
+                    {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
               </button>
@@ -254,10 +303,28 @@ export default function DashboardLayout({
                     onClick={() => setNotificationsOpen(false)}
                   />
                   <div className="absolute right-0 z-50 mt-2 w-80 rounded-md border bg-white shadow-lg">
-                    <div className="border-b px-4 py-3">
+                    <div className="flex items-center justify-between border-b px-4 py-3">
                       <p className="text-sm font-semibold text-slate-900">
-                        Recent Tickets
+                        Notifications
                       </p>
+                      <div className="flex items-center gap-1">
+                        {unreadCount > 0 && (
+                          <button
+                            onClick={markAllRead}
+                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            title="Mark all as read"
+                          >
+                            <CheckCheck className="h-4 w-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={clearNotifications}
+                          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          title="Dismiss all"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                     {notifications.length === 0 ? (
                       <div className="px-4 py-6 text-center text-sm text-slate-500">
@@ -265,23 +332,38 @@ export default function DashboardLayout({
                       </div>
                     ) : (
                       <div className="max-h-80 overflow-y-auto">
-                        {notifications.map((notif) => (
-                          <Link
-                            key={notif.id}
-                            href={notif.href}
-                            className={`block border-b px-4 py-3 text-sm transition-colors hover:bg-slate-50 ${
-                              !notif.read ? "bg-blue-50/50" : ""
-                            }`}
-                            onClick={() => setNotificationsOpen(false)}
-                          >
-                            <p className="truncate font-medium text-slate-800">
-                              {notif.message}
-                            </p>
-                            <p className="mt-0.5 text-xs text-slate-500">
-                              {notif.time}
-                            </p>
-                          </Link>
-                        ))}
+                        {notifications.map((notif) => {
+                          const isRead = notif.read || readIds.has(notif.id);
+                          return (
+                            <Link
+                              key={notif.id}
+                              href={notif.href}
+                              className={`block border-b px-4 py-3 text-sm transition-colors hover:bg-slate-50 ${
+                                !isRead ? "bg-blue-50/50" : ""
+                              }`}
+                              onClick={() => {
+                                const newIds = new Set(readIds);
+                                newIds.add(notif.id);
+                                persistReadIds(newIds);
+                                setNotificationsOpen(false);
+                              }}
+                            >
+                              <div className="flex items-start gap-2">
+                                {!isRead && (
+                                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate font-medium text-slate-800">
+                                    {notif.message}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {formatTimeAgo(notif.time)}
+                                  </p>
+                                </div>
+                              </div>
+                            </Link>
+                          );
+                        })}
                       </div>
                     )}
                     <Link

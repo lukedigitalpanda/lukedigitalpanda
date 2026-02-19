@@ -279,10 +279,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = params;
+    const userId = (session.user as any).id;
+    const userName = session.user.name || session.user.email || "Unknown";
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, number: true, subject: true, status: true, priority: true, clientId: true, client: { select: { name: true } } },
     });
 
     if (!ticket) {
@@ -292,7 +294,27 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    await prisma.ticket.delete({ where: { id } });
+    // Create audit log entry, then delete ticket in a transaction
+    await prisma.$transaction([
+      prisma.auditLog.create({
+        data: {
+          action: "ticket_deleted",
+          entityType: "Ticket",
+          entityId: id,
+          details: `Ticket #${ticket.number} "${ticket.subject}" was deleted`,
+          metadata: JSON.stringify({
+            number: ticket.number,
+            subject: ticket.subject,
+            status: ticket.status,
+            priority: ticket.priority,
+            client: ticket.client?.name,
+          }),
+          userId,
+          userName,
+        },
+      }),
+      prisma.ticket.delete({ where: { id } }),
+    ]);
 
     return NextResponse.json({ message: "Ticket deleted successfully" });
   } catch (error) {

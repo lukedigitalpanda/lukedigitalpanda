@@ -157,10 +157,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = params;
+    const userId = (session.user as any).id;
+    const userName = session.user.name || session.user.email || "Unknown";
 
     const client = await prisma.client.findUnique({
       where: { id },
-      select: { id: true, name: true },
+      select: { id: true, name: true, email: true, contractType: true, slaLevel: true },
     });
 
     if (!client) {
@@ -170,11 +172,24 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Soft delete: set isActive to false instead of removing
-    await prisma.client.update({
-      where: { id },
-      data: { isActive: false },
-    });
+    // Soft delete + audit log in a transaction
+    await prisma.$transaction([
+      prisma.client.update({
+        where: { id },
+        data: { isActive: false },
+      }),
+      prisma.auditLog.create({
+        data: {
+          action: "client_deactivated",
+          entityType: "Client",
+          entityId: id,
+          details: `Client "${client.name}" was deactivated`,
+          metadata: JSON.stringify({ name: client.name, email: client.email, contractType: client.contractType, slaLevel: client.slaLevel }),
+          userId,
+          userName,
+        },
+      }),
+    ]);
 
     return NextResponse.json({
       message: `Client "${client.name}" has been deactivated`,

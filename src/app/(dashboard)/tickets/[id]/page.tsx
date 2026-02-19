@@ -16,6 +16,8 @@ import {
   AlertCircle,
   User,
   Plus,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +42,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   cn,
   getStatusColor,
@@ -171,6 +181,10 @@ export default function TicketDetailPage() {
   // Sidebar edits
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updatingPriority, setUpdatingPriority] = useState(false);
+
+  // Delete
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // ---------- Fetch ticket --------------------------------------------------
   useEffect(() => {
@@ -341,6 +355,22 @@ export default function TicketDetailPage() {
     }
   }
 
+  async function handleDeleteTicket() {
+    try {
+      setDeleting(true);
+      const res = await fetch(`/api/tickets/${ticketId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to delete ticket");
+      }
+      router.push("/tickets");
+    } catch (err) {
+      console.error("Delete ticket error:", err);
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+    }
+  }
+
   // ---------- Loading & Error states ----------------------------------------
 
   if (loading) {
@@ -431,6 +461,37 @@ export default function TicketDetailPage() {
           </Badge>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Delete Ticket
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently delete ticket <strong>#{ticket.number} - {ticket.subject}</strong>? This action cannot be undone. All comments, time entries, and attachments will also be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteTicket}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete Ticket"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Main layout */}
       <div className="flex flex-col gap-6 lg:flex-row">
@@ -937,6 +998,21 @@ export default function TicketDetailPage() {
                   </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Danger Zone */}
+          <Card className="border-red-200">
+            <CardContent className="pt-6">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Ticket
+              </Button>
             </CardContent>
           </Card>
         </div>
