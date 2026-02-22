@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Send, CheckCircle, Upload, X, FileIcon } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -32,7 +32,16 @@ export default function PortalSubmitPage() {
   const [phone, setPhone] = useState("");
   const [subject, setSubject] = useState("");
   const [priority, setPriority] = useState("MEDIUM");
+  const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
+  const [ticketCategories, setTicketCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/settings/categories")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.ticketCategories) setTicketCategories(d.ticketCategories); })
+      .catch(() => {});
+  }, []);
 
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +65,7 @@ export default function PortalSubmitPage() {
           phone: phone.trim() || undefined,
           subject: subject.trim(),
           priority,
+          category: category || undefined,
           description: description.trim(),
           clientId: client?.id || undefined,
           contactId: contact?.id || undefined,
@@ -105,6 +115,7 @@ export default function PortalSubmitPage() {
     setPhone("");
     setSubject("");
     setPriority("MEDIUM");
+    setCategory("");
     setDescription("");
     setPendingFiles([]);
     setResult(null);
@@ -231,20 +242,38 @@ export default function PortalSubmitPage() {
               />
             </div>
 
-            {/* Priority */}
-            <div className="space-y-2">
-              <Label htmlFor="priority">Priority</Label>
-              <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="LOW">Low</SelectItem>
-                  <SelectItem value="MEDIUM">Medium</SelectItem>
-                  <SelectItem value="HIGH">High</SelectItem>
-                  <SelectItem value="CRITICAL">Critical</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Priority + Category row */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="priority">Priority</Label>
+                <Select value={priority} onValueChange={setPriority}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="CRITICAL">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {ticketCategories.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ticketCategories.map((cat) => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             {/* Description */}

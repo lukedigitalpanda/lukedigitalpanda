@@ -10,27 +10,48 @@ import {
 
 const GRAPH_SCOPES = ["https://graph.microsoft.com/.default"];
 
-function getMsalConfig(): Configuration {
-  const clientId = process.env.MS_GRAPH_CLIENT_ID;
-  const clientSecret = process.env.MS_GRAPH_CLIENT_SECRET;
-  const tenantId = process.env.MS_GRAPH_TENANT_ID;
+interface MsGraphCredentials {
+  clientId: string;
+  clientSecret: string;
+  tenantId: string;
+}
 
-  if (!clientId || !clientSecret || !tenantId) {
-    throw new Error(
-      "Missing Microsoft Graph environment variables. " +
-        "Ensure MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, and MS_GRAPH_TENANT_ID are set."
-    );
+/** Load credentials from env vars, then DB fallback */
+async function resolveCredentials(): Promise<MsGraphCredentials> {
+  const envClientId = process.env.MS_GRAPH_CLIENT_ID;
+  const envSecret = process.env.MS_GRAPH_CLIENT_SECRET;
+  const envTenantId = process.env.MS_GRAPH_TENANT_ID;
+
+  if (envClientId && envSecret && envTenantId) {
+    return { clientId: envClientId, clientSecret: envSecret, tenantId: envTenantId };
   }
 
-  return {
-    auth: {
-      clientId,
-      clientSecret,
-      authority: `https://login.microsoftonline.com/${tenantId}`,
-    },
-    // MSAL uses an in-memory token cache by default, which handles
-    // caching and automatic refresh of tokens for us.
-  };
+  // Fall back to database settings
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const row = await prisma.settings.findUnique({ where: { key: "email_config" } });
+    if (row) {
+      const config = JSON.parse(row.value) as {
+        clientId?: string;
+        clientSecret?: string;
+        tenantId?: string;
+      };
+      if (config.clientId && config.clientSecret && config.tenantId) {
+        return {
+          clientId: config.clientId,
+          clientSecret: config.clientSecret,
+          tenantId: config.tenantId,
+        };
+      }
+    }
+  } catch {
+    // DB not available
+  }
+
+  throw new Error(
+    "Missing Microsoft Graph credentials. Configure via Settings > Email Integration or set " +
+      "MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_TENANT_ID environment variables."
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -39,9 +60,22 @@ function getMsalConfig(): Configuration {
 
 let msalInstance: ConfidentialClientApplication | null = null;
 
-function getMsalInstance(): ConfidentialClientApplication {
+/** Call this after updating credentials in the database to force re-init */
+export function resetMsalInstance(): void {
+  msalInstance = null;
+}
+
+async function getMsalInstance(): Promise<ConfidentialClientApplication> {
   if (!msalInstance) {
-    msalInstance = new ConfidentialClientApplication(getMsalConfig());
+    const creds = await resolveCredentials();
+    const config: Configuration = {
+      auth: {
+        clientId: creds.clientId,
+        clientSecret: creds.clientSecret,
+        authority: `https://login.microsoftonline.com/${creds.tenantId}`,
+      },
+    };
+    msalInstance = new ConfidentialClientApplication(config);
   }
   return msalInstance;
 }
@@ -51,7 +85,7 @@ function getMsalInstance(): ConfidentialClientApplication {
 // ---------------------------------------------------------------------------
 
 async function acquireToken(): Promise<string> {
-  const client = getMsalInstance();
+  const client = await getMsalInstance();
 
   const result: AuthenticationResult | null =
     await client.acquireTokenByClientCredential({
@@ -72,24 +106,9 @@ async function acquireToken(): Promise<string> {
 // ---------------------------------------------------------------------------
 
 export interface GraphClient {
-  /**
-   * Execute an authenticated GET request against the Microsoft Graph API.
-   */
   get<T = any>(url: string, params?: Record<string, string>): Promise<T>;
-
-  /**
-   * Execute an authenticated POST request against the Microsoft Graph API.
-   */
   post<T = any>(url: string, body?: unknown): Promise<T>;
-
-  /**
-   * Execute an authenticated PATCH request against the Microsoft Graph API.
-   */
   patch<T = any>(url: string, body?: unknown): Promise<T>;
-
-  /**
-   * Execute an authenticated DELETE request against the Microsoft Graph API.
-   */
   delete(url: string): Promise<void>;
 }
 
@@ -102,7 +121,6 @@ async function graphFetch(
 ): Promise<Response> {
   const accessToken = await acquireToken();
 
-  // Support both absolute Graph URLs (e.g. deltaLink) and relative paths.
   const fullUrl = url.startsWith("https://") ? url : `${GRAPH_BASE}${url}`;
 
   const headers: Record<string, string> = {
@@ -111,7 +129,6 @@ async function graphFetch(
   };
 
   const init: RequestInit = { method, headers };
-
   if (body !== undefined) {
     init.body = JSON.stringify(body);
   }
@@ -129,53 +146,46 @@ async function graphFetch(
 }
 
 function buildUrl(path: string, params?: Record<string, string>): string {
-  if (!params || Object.keys(params).length === 0) {
-    return path;
-  }
+  if (!params || Object.keys(params).length === 0) return path;
   const qs = new URLSearchParams(params).toString();
   const separator = path.includes("?") ? "&" : "?";
   return `${path}${separator}${qs}`;
 }
 
-/**
- * Returns a lightweight, authenticated Microsoft Graph API client.
- *
- * The client uses the OAuth 2.0 client credentials flow via MSAL and
- * automatically caches / refreshes tokens.
- *
- * Usage:
- * ```ts
- * const graph = getGraphClient();
- * const messages = await graph.get("/users/support@contoso.com/messages");
- * ```
- */
 export function getGraphClient(): GraphClient {
   return {
-    async get<T = any>(
-      url: string,
-      params?: Record<string, string>
-    ): Promise<T> {
+    async get<T = any>(url: string, params?: Record<string, string>): Promise<T> {
       const response = await graphFetch("GET", buildUrl(url, params));
       return response.json() as Promise<T>;
     },
-
     async post<T = any>(url: string, body?: unknown): Promise<T> {
       const response = await graphFetch("POST", url, body);
-      // Some POST endpoints (e.g. sendMail) return 202 with no body.
       const text = await response.text();
       if (!text) return undefined as unknown as T;
       return JSON.parse(text) as T;
     },
-
     async patch<T = any>(url: string, body?: unknown): Promise<T> {
       const response = await graphFetch("PATCH", url, body);
       const text = await response.text();
       if (!text) return undefined as unknown as T;
       return JSON.parse(text) as T;
     },
-
     async delete(url: string): Promise<void> {
       await graphFetch("DELETE", url);
     },
   };
+}
+
+/** Returns the mailbox address, checking env then DB */
+export async function resolveMailbox(): Promise<string | null> {
+  if (process.env.MS_GRAPH_MAILBOX) return process.env.MS_GRAPH_MAILBOX;
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const row = await prisma.settings.findUnique({ where: { key: "email_config" } });
+    if (row) {
+      const config = JSON.parse(row.value) as { mailbox?: string };
+      return config.mailbox || null;
+    }
+  } catch {}
+  return null;
 }

@@ -3,45 +3,7 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { TicketStatus, TicketPriority, Prisma } from "@prisma/client";
-
-// SLA deadline hours by priority and client SLA level
-const SLA_HOURS: Record<string, Record<string, number>> = {
-  Gold: {
-    CRITICAL: 2,
-    HIGH: 4,
-    MEDIUM: 8,
-    LOW: 24,
-  },
-  Silver: {
-    CRITICAL: 4,
-    HIGH: 8,
-    MEDIUM: 24,
-    LOW: 48,
-  },
-  Bronze: {
-    CRITICAL: 8,
-    HIGH: 24,
-    MEDIUM: 48,
-    LOW: 72,
-  },
-};
-
-const DEFAULT_SLA_HOURS: Record<string, number> = {
-  CRITICAL: 4,
-  HIGH: 8,
-  MEDIUM: 24,
-  LOW: 48,
-};
-
-function calculateSlaDeadline(priority: string, slaLevel: string | null): Date {
-  const hours =
-    (slaLevel && SLA_HOURS[slaLevel]?.[priority]) ||
-    DEFAULT_SLA_HOURS[priority] ||
-    24;
-  const deadline = new Date();
-  deadline.setHours(deadline.getHours() + hours);
-  return deadline;
-}
+import { calculateSLADeadlineAsync } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -203,7 +165,7 @@ export async function POST(request: NextRequest) {
     }
 
     const ticketPriority = priority || "MEDIUM";
-    const slaDeadline = calculateSlaDeadline(ticketPriority, client.slaLevel);
+    const slaDeadline = await calculateSLADeadlineAsync(ticketPriority, client.slaLevel);
 
     const userId = (session.user as any).id;
 

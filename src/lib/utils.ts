@@ -34,23 +34,37 @@ export function generateTicketNumber(): string {
   return `TKT-${Date.now().toString(36).toUpperCase()}`;
 }
 
+const FALLBACK_SLA: Record<string, Record<string, number>> = {
+  CRITICAL: { Gold: 1, Silver: 2, Bronze: 4 },
+  HIGH: { Gold: 4, Silver: 8, Bronze: 16 },
+  MEDIUM: { Gold: 8, Silver: 24, Bronze: 48 },
+  LOW: { Gold: 24, Silver: 48, Bronze: 72 },
+};
+
 export function calculateSLADeadline(
   priority: string,
-  slaLevel?: string | null
+  slaLevel?: string | null,
+  slaMatrix?: Record<string, Record<string, number>>
 ): Date {
   const now = new Date();
-  // SLA hours by priority and level
-  const slaMatrix: Record<string, Record<string, number>> = {
-    CRITICAL: { Gold: 1, Silver: 2, Bronze: 4 },
-    HIGH: { Gold: 4, Silver: 8, Bronze: 16 },
-    MEDIUM: { Gold: 8, Silver: 24, Bronze: 48 },
-    LOW: { Gold: 24, Silver: 48, Bronze: 72 },
-  };
-
+  const matrix = slaMatrix ?? FALLBACK_SLA;
   const level = slaLevel || "Silver";
-  const hours = slaMatrix[priority]?.[level] || 24;
-
+  const hours = matrix[priority]?.[level] ?? 24;
   return new Date(now.getTime() + hours * 60 * 60 * 1000);
+}
+
+/** Async version that reads the SLA matrix from database settings */
+export async function calculateSLADeadlineAsync(
+  priority: string,
+  slaLevel?: string | null
+): Promise<Date> {
+  try {
+    const { loadSLAMatrix } = await import("@/app/api/settings/sla/route");
+    const matrix = await loadSLAMatrix();
+    return calculateSLADeadline(priority, slaLevel, matrix as Record<string, Record<string, number>>);
+  } catch {
+    return calculateSLADeadline(priority, slaLevel);
+  }
 }
 
 export function isSLABreached(deadline: Date | null): boolean {

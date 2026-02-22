@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
+import { loadEmailConfig } from "@/app/api/settings/email/route";
 
 export async function GET() {
   try {
@@ -10,12 +11,8 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const connected = !!(
-      process.env.MS_GRAPH_CLIENT_ID &&
-      process.env.MS_GRAPH_CLIENT_SECRET &&
-      process.env.MS_GRAPH_TENANT_ID &&
-      process.env.MS_GRAPH_MAILBOX
-    );
+    const config = await loadEmailConfig();
+    const connected = !!(config.clientId && config.clientSecret && config.tenantId && config.mailbox);
 
     const syncState = await prisma.emailSyncState.findFirst({
       orderBy: { lastSyncedAt: "desc" },
@@ -23,7 +20,7 @@ export async function GET() {
 
     return NextResponse.json({
       connected,
-      mailbox: process.env.MS_GRAPH_MAILBOX || syncState?.mailbox || null,
+      mailbox: config.mailbox || null,
       lastSyncedAt: syncState?.lastSyncedAt?.toISOString() || null,
       deltaToken: syncState?.deltaToken ? true : false,
     });

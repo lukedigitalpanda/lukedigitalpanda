@@ -5,6 +5,7 @@ import {
   processIncomingEmail,
   type ProcessResult,
 } from "@/lib/microsoft/email-to-ticket";
+import { resolveMailbox } from "@/lib/microsoft/graph-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,12 +40,12 @@ export interface SyncResult {
  */
 export async function syncEmails(): Promise<SyncResult> {
   const startedAt = new Date();
-  const mailbox = process.env.MS_GRAPH_MAILBOX;
+  const mailbox = await resolveMailbox();
 
   if (!mailbox) {
     throw new Error(
-      "MS_GRAPH_MAILBOX environment variable is not set. " +
-        "Cannot run email sync without a target mailbox."
+      "Email mailbox is not configured. " +
+        "Set MS_GRAPH_MAILBOX environment variable or configure via Settings > Email Integration."
     );
   }
 

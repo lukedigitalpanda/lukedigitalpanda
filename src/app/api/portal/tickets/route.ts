@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { calculateSLADeadline } from "@/lib/utils";
+import { calculateSLADeadlineAsync } from "@/lib/utils";
 
 // POST: Public ticket creation (no auth required)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, phone, subject, description, priority, clientId, contactId } = body;
+    const { name, email, phone, subject, description, priority, clientId, contactId, category } = body;
 
     if (!name || !email || !subject || !description) {
       return NextResponse.json(
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       where: { id: resolvedClientId },
     });
 
-    const slaDeadline = calculateSLADeadline(ticketPriority, client?.slaLevel);
+    const slaDeadline = await calculateSLADeadlineAsync(ticketPriority, client?.slaLevel);
 
     // Find a default creator (first admin user) for the createdById field
     const systemUser = await prisma.user.findFirst({
@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
         subject,
         description,
         priority: ticketPriority,
+        category: category || null,
         status: "OPEN",
         source: "PORTAL",
         clientId: resolvedClientId,
@@ -116,22 +117,25 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Try AI classification in the background (don't block the response)
-    try {
-      const { classifyTicket } = await import("@/lib/ai/ticket-classifier");
-      const classification = await classifyTicket(subject, description);
-      if (classification) {
-        await prisma.ticket.update({
-          where: { id: ticket.id },
-          data: {
-            aiCategory: classification.category,
-            category: classification.category,
-            aiConfidence: classification.confidence,
-          },
-        });
+    // Try AI classification only if no category was supplied by the user
+    // (don't block the response)
+    if (!category) {
+      try {
+        const { classifyTicket } = await import("@/lib/ai/ticket-classifier");
+        const classification = await classifyTicket(subject, description);
+        if (classification) {
+          await prisma.ticket.update({
+            where: { id: ticket.id },
+            data: {
+              aiCategory: classification.category,
+              category: classification.category,
+              aiConfidence: classification.confidence,
+            },
+          });
+        }
+      } catch {
+        // AI classification is optional - don't fail the ticket creation
       }
-    } catch {
-      // AI classification is optional - don't fail the ticket creation
     }
 
     return NextResponse.json(
