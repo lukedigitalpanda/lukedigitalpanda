@@ -99,7 +99,7 @@ export async function fetchNewEmails(
       `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages/delta` +
       `?$filter=${encodeURIComponent(filter)}` +
       `&$select=id,subject,body,from,sender,receivedDateTime,conversationId,hasAttachments` +
-      `&$orderby=receivedDateTime asc` +
+      `&$orderby=receivedDateTime desc` +
       `&$top=50`;
   }
 
