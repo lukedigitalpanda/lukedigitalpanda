@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "email:sync": "tsx src/lib/jobs/email-sync.ts"
+    "email:sync": "tsx src/lib/jobs/email-sync.ts",
+    "ninjarmm:sync": "tsx src/lib/jobs/ninjarmm-sync-job.ts"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
