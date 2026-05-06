@@ -78,22 +78,25 @@ async function syncOrgs(
 
   for (const org of orgs) {
     const ninjaOrgId = String(org.id);
-    let dbClient = await prisma.client.findUnique({
+    const isNew = !(await prisma.client.findUnique({
       where: { ninjaOrgId },
+      select: { id: true },
+    }));
+
+    const dbClient = await prisma.client.upsert({
+      where: { ninjaOrgId },
+      update: {},
+      create: {
+        name: org.name,
+        phone: org.phoneNumber ?? null,
+        website: org.website ?? null,
+        ninjaOrgId,
+        isActive: true,
+      },
       select: { id: true },
     });
 
-    if (!dbClient) {
-      dbClient = await prisma.client.create({
-        data: {
-          name: org.name,
-          phone: org.phoneNumber ?? null,
-          website: org.website ?? null,
-          ninjaOrgId,
-          isActive: true,
-        },
-        select: { id: true },
-      });
+    if (isNew) {
       clientsCreated++;
       console.log(`[ninjarmm-sync] Created client: ${org.name}`);
     }
@@ -124,42 +127,46 @@ async function syncDevices(
       continue;
     }
 
-    const ninjaDeviceId = String(device.id);
-    const type = mapDeviceClass(device.nodeClass);
-    const notes = device.os?.name ? `OS: ${device.os.name}` : null;
+    try {
+      const ninjaDeviceId = String(device.id);
+      const type = mapDeviceClass(device.nodeClass);
+      const notes = device.os?.name ? `OS: ${device.os.name}` : null;
 
-    await prisma.asset.upsert({
-      where: { ninjaDeviceId },
-      update: {
-        name: device.systemName,
-        hostname: device.dnsName ?? device.systemName,
-        ipAddress: device.ipAddresses ?? null,
-        macAddress: device.macAddresses ?? null,
-        manufacturer: device.system?.manufacturer ?? null,
-        model: device.system?.model ?? null,
-        serialNumber: device.system?.serialNumber ?? null,
-        type,
-        clientId,
-      },
-      create: {
-        name: device.systemName,
-        hostname: device.dnsName ?? device.systemName,
-        ipAddress: device.ipAddresses ?? null,
-        macAddress: device.macAddresses ?? null,
-        manufacturer: device.system?.manufacturer ?? null,
-        model: device.system?.model ?? null,
-        serialNumber: device.system?.serialNumber ?? null,
-        type,
-        status: "ACTIVE",
-        clientId,
-        ninjaDeviceId,
-        ninjaSource: true,
-        notes,
-      },
-    });
+      await prisma.asset.upsert({
+        where: { ninjaDeviceId },
+        update: {
+          name: device.systemName,
+          hostname: device.dnsName ?? device.systemName,
+          ipAddress: device.ipAddresses ?? null,
+          macAddress: device.macAddresses ?? null,
+          manufacturer: device.system?.manufacturer ?? null,
+          model: device.system?.model ?? null,
+          serialNumber: device.system?.serialNumber ?? null,
+          type,
+          clientId,
+        },
+        create: {
+          name: device.systemName,
+          hostname: device.dnsName ?? device.systemName,
+          ipAddress: device.ipAddresses ?? null,
+          macAddress: device.macAddresses ?? null,
+          manufacturer: device.system?.manufacturer ?? null,
+          model: device.system?.model ?? null,
+          serialNumber: device.system?.serialNumber ?? null,
+          type,
+          status: "ACTIVE",
+          clientId,
+          ninjaDeviceId,
+          ninjaSource: true,
+          notes,
+        },
+      });
 
-    devicesProcessed++;
-    assetsUpserted++;
+      devicesProcessed++;
+      assetsUpserted++;
+    } catch (err) {
+      console.error(`[ninjarmm-sync] Failed to upsert device ${device.id}:`, err);
+    }
   }
 
   return { devicesProcessed, assetsUpserted };
@@ -188,52 +195,55 @@ async function syncAlerts(
 
   for (const alert of alerts) {
     alertsProcessed++;
-
-    const existing = await prisma.ticket.findUnique({
-      where: { ninjaAlertId: alert.uid },
-      select: { id: true },
-    });
-    if (existing) continue;
-
-    const clientId = alert.organizationId
-      ? orgMap.get(alert.organizationId)
-      : undefined;
-    if (!clientId) {
-      console.warn(
-        `[ninjarmm-sync] Skipping alert ${alert.uid} — org ${alert.organizationId} not mapped`
-      );
-      continue;
-    }
-
-    let relatedAssetId: string | undefined;
-    if (alert.deviceId) {
-      const asset = await prisma.asset.findUnique({
-        where: { ninjaDeviceId: String(alert.deviceId) },
+    try {
+      const existing = await prisma.ticket.findUnique({
+        where: { ninjaAlertId: alert.uid },
         select: { id: true },
       });
-      relatedAssetId = asset?.id;
+      if (existing) continue;
+
+      const clientId = alert.organizationId
+        ? orgMap.get(alert.organizationId)
+        : undefined;
+      if (!clientId) {
+        console.warn(
+          `[ninjarmm-sync] Skipping alert ${alert.uid} — org ${alert.organizationId} not mapped`
+        );
+        continue;
+      }
+
+      let relatedAssetId: string | undefined;
+      if (alert.deviceId) {
+        const asset = await prisma.asset.findUnique({
+          where: { ninjaDeviceId: String(alert.deviceId) },
+          select: { id: true },
+        });
+        relatedAssetId = asset?.id;
+      }
+
+      await prisma.ticket.create({
+        data: {
+          subject: `[NinjaOne] ${alert.message}`,
+          description: `Automated alert from NinjaOne RMM.\n\nSeverity: ${alert.severity}\nMessage: ${alert.message}`,
+          status: "OPEN",
+          priority: alert.severity === "CRITICAL" ? "CRITICAL" : "HIGH",
+          source: "API",
+          clientId,
+          createdById: systemUser.id,
+          ninjaAlertId: alert.uid,
+          ...(relatedAssetId
+            ? { relatedAssets: { connect: { id: relatedAssetId } } }
+            : {}),
+        },
+      });
+
+      ticketsCreated++;
+      console.log(
+        `[ninjarmm-sync] Ticket created for alert: ${alert.message}`
+      );
+    } catch (err) {
+      console.error(`[ninjarmm-sync] Failed to process alert ${alert.uid}:`, err);
     }
-
-    await prisma.ticket.create({
-      data: {
-        subject: `[NinjaOne] ${alert.message}`,
-        description: `Automated alert from NinjaOne RMM.\n\nSeverity: ${alert.severity}\nMessage: ${alert.message}`,
-        status: "OPEN",
-        priority: alert.severity === "CRITICAL" ? "CRITICAL" : "HIGH",
-        source: "API",
-        clientId,
-        createdById: systemUser.id,
-        ninjaAlertId: alert.uid,
-        ...(relatedAssetId
-          ? { relatedAssets: { connect: { id: relatedAssetId } } }
-          : {}),
-      },
-    });
-
-    ticketsCreated++;
-    console.log(
-      `[ninjarmm-sync] Ticket created for alert: ${alert.message}`
-    );
   }
 
   return { alertsProcessed, ticketsCreated };
@@ -258,6 +268,22 @@ export async function runNinjaRmmSync(): Promise<SyncResult> {
   try {
     const config = await loadNinjaRmmConfig();
     if (!config) throw new Error("NinjaOne RMM is not configured");
+
+    if (!config.enabled) {
+      console.log("[ninjarmm-sync] Sync is disabled — skipping");
+      return {
+        success: true,
+        orgsProcessed: 0,
+        clientsCreated: 0,
+        devicesProcessed: 0,
+        assetsUpserted: 0,
+        alertsProcessed: 0,
+        ticketsCreated: 0,
+        errors: [],
+        startedAt,
+        completedAt: new Date(),
+      };
+    }
 
     const client = new NinjaRmmClient({
       instanceUrl: config.instanceUrl,
