@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Loader2,
   ExternalLink,
+  Server,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -248,6 +249,33 @@ export default function SettingsPage() {
   const [emailFromEnv, setEmailFromEnv] = useState(false);
   const [syncResult, setSyncResult] = useState<any>(null);
 
+  // NinjaOne RMM
+  const [ninjaForm, setNinjaForm] = useState({
+    clientId: "",
+    clientSecret: "",
+    instanceUrl: "eu.ninjarmm.com",
+    enabled: false,
+  });
+  const [ninjaConfigured, setNinjaConfigured] = useState(false);
+  const [ninjaLastSync, setNinjaLastSync] = useState<string | null>(null);
+  const [ninjaTesting, setNinjaTesting] = useState(false);
+  const [ninjaTestResult, setNinjaTestResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [ninjaSaving, setNinjaSaving] = useState(false);
+  const [ninjaSyncing, setNinjaSyncing] = useState(false);
+  const [ninjaSyncResult, setNinjaSyncResult] = useState<{
+    success: boolean;
+    data?: {
+      clientsCreated: number;
+      assetsUpserted: number;
+      ticketsCreated: number;
+      errors: string[];
+    };
+  } | null>(null);
+  const [ninjaShowSecret, setNinjaShowSecret] = useState(false);
+
   // ---- Users tab state ----
   const [users, setUsers] = useState<UserEntry[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -347,6 +375,22 @@ export default function SettingsPage() {
         setEmailLoading(false);
       }
     }
+    // NinjaOne config
+    fetch("/api/integrations/ninjarmm")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.configured) {
+          setNinjaConfigured(true);
+          setNinjaForm((prev) => ({
+            ...prev,
+            clientId: data.clientId || "",
+            instanceUrl: data.instanceUrl || "eu.ninjarmm.com",
+            enabled: data.enabled,
+          }));
+          setNinjaLastSync(data.lastSyncedAt);
+        }
+      })
+      .catch(() => {});
     if (activeTab === "email") fetchEmailStatus();
   }, [activeTab]);
 
@@ -527,6 +571,67 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleTestNinja() {
+    setNinjaTesting(true);
+    setNinjaTestResult(null);
+    try {
+      const res = await fetch("/api/integrations/ninjarmm/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: ninjaForm.clientId,
+          clientSecret: ninjaForm.clientSecret,
+          instanceUrl: ninjaForm.instanceUrl,
+        }),
+      });
+      const data = await res.json();
+      setNinjaTestResult({
+        success: data.success,
+        message: data.success ? "Connection successful" : data.error || "Connection failed",
+      });
+    } catch {
+      setNinjaTestResult({ success: false, message: "Network error" });
+    } finally {
+      setNinjaTesting(false);
+    }
+  }
+
+  async function handleSaveNinja() {
+    setNinjaSaving(true);
+    try {
+      const res = await fetch("/api/integrations/ninjarmm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ninjaForm),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setNinjaConfigured(true);
+    } catch {
+      // error is surfaced via button disabled state; a toast could be added here
+    } finally {
+      setNinjaSaving(false);
+    }
+  }
+
+  async function handleSyncNow() {
+    setNinjaSyncing(true);
+    setNinjaSyncResult(null);
+    try {
+      const res = await fetch("/api/integrations/ninjarmm/sync", {
+        method: "POST",
+      });
+      const data = await res.json();
+      setNinjaSyncResult(data);
+      if (data.success) {
+        setNinjaLastSync(new Date().toISOString());
+      }
+    } catch {
+      setNinjaSyncResult({ success: false });
+    } finally {
+      setNinjaSyncing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -553,6 +658,10 @@ export default function SettingsPage() {
           <TabsTrigger value="email" className="gap-2">
             <Mail className="h-4 w-4" />
             Email Integration
+          </TabsTrigger>
+          <TabsTrigger value="ninjarmm" className="gap-2">
+            <Server className="h-4 w-4" />
+            NinjaOne RMM
           </TabsTrigger>
         </TabsList>
 
@@ -1197,6 +1306,218 @@ export default function SettingsPage() {
               )}
             </div>
           )}
+        </TabsContent>
+
+        {/* ================================================================ */}
+        {/* NinjaOne RMM Tab                                                  */}
+        {/* ================================================================ */}
+        <TabsContent value="ninjarmm">
+          <div className="space-y-6">
+            {/* Credentials */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Server className="h-5 w-5" />
+                  NinjaOne RMM
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Sync devices and organisations from NinjaOne. Alerts with
+                  MAJOR or CRITICAL severity will automatically create tickets.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="ninja-instance">Instance URL</Label>
+                    <Input
+                      id="ninja-instance"
+                      value={ninjaForm.instanceUrl}
+                      onChange={(e) =>
+                        setNinjaForm((f) => ({ ...f, instanceUrl: e.target.value }))
+                      }
+                      placeholder="eu.ninjarmm.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ninja-client-id">Client ID</Label>
+                    <Input
+                      id="ninja-client-id"
+                      value={ninjaForm.clientId}
+                      onChange={(e) =>
+                        setNinjaForm((f) => ({ ...f, clientId: e.target.value }))
+                      }
+                      placeholder="OAuth client ID"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ninja-secret">Client Secret</Label>
+                  <div className="relative">
+                    <Input
+                      id="ninja-secret"
+                      type={ninjaShowSecret ? "text" : "password"}
+                      value={ninjaForm.clientSecret}
+                      onChange={(e) =>
+                        setNinjaForm((f) => ({ ...f, clientSecret: e.target.value }))
+                      }
+                      placeholder="OAuth client secret"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      onClick={() => setNinjaShowSecret((s) => !s)}
+                    >
+                      {ninjaShowSecret ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Test result */}
+                {ninjaTestResult && (
+                  <div
+                    className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                      ninjaTestResult.success
+                        ? "border-green-200 bg-green-50 text-green-700"
+                        : "border-red-200 bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {ninjaTestResult.success ? (
+                      <Check className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <X className="h-4 w-4 shrink-0" />
+                    )}
+                    {ninjaTestResult.message}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={handleTestNinja}
+                    disabled={
+                      ninjaTesting ||
+                      !ninjaForm.clientId ||
+                      !ninjaForm.clientSecret ||
+                      !ninjaForm.instanceUrl
+                    }
+                  >
+                    {ninjaTesting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
+                    Test Connection
+                  </Button>
+                  <Button
+                    onClick={handleSaveNinja}
+                    disabled={
+                      ninjaSaving ||
+                      !ninjaForm.clientId ||
+                      !ninjaForm.clientSecret ||
+                      !ninjaForm.instanceUrl
+                    }
+                  >
+                    {ninjaSaving ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    Save Settings
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Enable + Sync */}
+            {ninjaConfigured && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-semibold">Sync Status</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Enable scheduled sync</p>
+                      <p className="text-xs text-muted-foreground">
+                        Runs every 15 minutes when the server is running
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={ninjaForm.enabled}
+                      onClick={() => {
+                        setNinjaForm((f) => ({ ...f, enabled: !f.enabled }));
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        ninjaForm.enabled ? "bg-primary" : "bg-muted"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          ninjaForm.enabled ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 text-sm text-muted-foreground">
+                      {ninjaLastSync ? (
+                        <>
+                          Last sync:{" "}
+                          {new Date(ninjaLastSync).toLocaleString()}
+                        </>
+                      ) : (
+                        "Never synced"
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSyncNow}
+                      disabled={ninjaSyncing}
+                    >
+                      {ninjaSyncing ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Sync Now
+                    </Button>
+                  </div>
+
+                  {/* Sync result */}
+                  {ninjaSyncResult && (
+                    <div
+                      className={`rounded-md border p-3 text-sm ${
+                        ninjaSyncResult.success
+                          ? "border-green-200 bg-green-50 text-green-700"
+                          : "border-red-200 bg-red-50 text-red-700"
+                      }`}
+                    >
+                      {ninjaSyncResult.success && ninjaSyncResult.data ? (
+                        <ul className="space-y-1">
+                          <li>Clients created: {ninjaSyncResult.data.clientsCreated}</li>
+                          <li>Assets synced: {ninjaSyncResult.data.assetsUpserted}</li>
+                          <li>Tickets created: {ninjaSyncResult.data.ticketsCreated}</li>
+                        </ul>
+                      ) : (
+                        <span>
+                          Sync failed.{" "}
+                          {ninjaSyncResult.data?.errors?.join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
     </div>
