@@ -116,6 +116,7 @@ model Client {
   isActive     Boolean @default(true)
   contractType String? // e.g., "Managed", "Break-Fix", "Project"
   slaLevel     String? // e.g., "Gold", "Silver", "Bronze"
+  ninjaOrgId   String? @unique
   logoUrl      String? @db.Text // Base64 data URL or external URL for company logo
 
   createdAt DateTime @default(now())
@@ -178,6 +179,7 @@ model Ticket {
   aiSummary     String?  @db.Text
   aiSuggestion  String?  @db.Text
   aiConfidence  Float?
+  ninjaAlertId  String?  @unique
 
   // Relations
   clientId    String
@@ -335,7 +337,9 @@ model Asset {
   licenseExpiry  DateTime?
   version        String?
 
-  clientId String
+  clientId       String
+  ninjaDeviceId  String? @unique
+  ninjaSource    Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
