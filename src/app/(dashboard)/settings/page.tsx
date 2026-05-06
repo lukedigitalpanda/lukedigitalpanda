@@ -376,21 +376,23 @@ export default function SettingsPage() {
       }
     }
     // NinjaOne config
-    fetch("/api/integrations/ninjarmm")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.configured) {
-          setNinjaConfigured(true);
-          setNinjaForm((prev) => ({
-            ...prev,
-            clientId: data.clientId || "",
-            instanceUrl: data.instanceUrl || "eu.ninjarmm.com",
-            enabled: data.enabled,
-          }));
-          setNinjaLastSync(data.lastSyncedAt);
-        }
-      })
-      .catch(() => {});
+    if (activeTab === "ninjarmm") {
+      fetch("/api/integrations/ninjarmm")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.configured) {
+            setNinjaConfigured(true);
+            setNinjaForm((prev) => ({
+              ...prev,
+              clientId: data.clientId || "",
+              instanceUrl: data.instanceUrl || "eu.ninjarmm.com",
+              enabled: data.enabled,
+            }));
+            setNinjaLastSync(data.lastSyncedAt);
+          }
+        })
+        .catch(() => {});
+    }
     if (activeTab === "email") fetchEmailStatus();
   }, [activeTab]);
 
@@ -1419,7 +1421,6 @@ export default function SettingsPage() {
                     disabled={
                       ninjaSaving ||
                       !ninjaForm.clientId ||
-                      !ninjaForm.clientSecret ||
                       !ninjaForm.instanceUrl
                     }
                   >
@@ -1450,8 +1451,14 @@ export default function SettingsPage() {
                       type="button"
                       role="switch"
                       aria-checked={ninjaForm.enabled}
-                      onClick={() => {
-                        setNinjaForm((f) => ({ ...f, enabled: !f.enabled }));
+                      onClick={async () => {
+                        const newEnabled = !ninjaForm.enabled;
+                        setNinjaForm((f) => ({ ...f, enabled: newEnabled }));
+                        await fetch("/api/integrations/ninjarmm", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ ...ninjaForm, enabled: newEnabled }),
+                        }).catch(() => {});
                       }}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         ninjaForm.enabled ? "bg-primary" : "bg-muted"
@@ -1509,7 +1516,8 @@ export default function SettingsPage() {
                       ) : (
                         <span>
                           Sync failed.{" "}
-                          {ninjaSyncResult.data?.errors?.join(", ")}
+                          {(ninjaSyncResult as any).error ||
+                            ninjaSyncResult.data?.errors?.join(", ")}
                         </span>
                       )}
                     </div>

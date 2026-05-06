@@ -46,9 +46,7 @@ export async function GET() {
       configured: true,
       enabled: config.enabled,
       instanceUrl: config.instanceUrl,
-      clientId: config.clientId
-        ? config.clientId.slice(0, 4) + "••••" + config.clientId.slice(-4)
-        : "",
+      clientId: config.clientId ?? "",
       clientSecret: config.clientSecret ? "••••••••" : "",
       lastSyncedAt: lastSyncRow?.value ?? null,
     });
@@ -73,16 +71,35 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as Partial<NinjaRmmConfig>;
     const { clientId, clientSecret, instanceUrl, enabled } = body;
 
-    if (!clientId || !clientSecret || !instanceUrl) {
+    if (!clientId || !instanceUrl) {
       return NextResponse.json(
-        { error: "clientId, clientSecret, and instanceUrl are required" },
+        { error: "clientId and instanceUrl are required" },
+        { status: 400 }
+      );
+    }
+
+    // Load existing config to preserve secret when not re-entered
+    let resolvedSecret = clientSecret;
+    if (!resolvedSecret || resolvedSecret === "••••••••") {
+      const existing = await prisma.settings.findUnique({
+        where: { key: SETTINGS_KEY },
+      });
+      if (existing) {
+        const existingConfig = JSON.parse(existing.value) as NinjaRmmConfig;
+        resolvedSecret = existingConfig.clientSecret;
+      }
+    }
+
+    if (!resolvedSecret) {
+      return NextResponse.json(
+        { error: "clientSecret is required" },
         { status: 400 }
       );
     }
 
     const config: NinjaRmmConfig = {
       clientId,
-      clientSecret,
+      clientSecret: resolvedSecret,
       instanceUrl,
       enabled: enabled ?? false,
     };
